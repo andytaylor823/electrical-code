@@ -10,7 +10,6 @@ env_path = Path(__file__).parent.parent.resolve() / '.env'
 load_dotenv(env_path)
 
 root = Path(__file__).parent.parent.parent.resolve() / 'NFPA 70 NEC 2023'
-#PDF_FILE = root + '_sample.pdf'
 PDF_FILE = root.with_suffix('.pdf')
 
 def get_client() -> DocumentIntelligenceClient:
@@ -52,7 +51,8 @@ def save_text(result: models.AnalyzeResult):
         }
         for i, paragraph in enumerate(result.paragraphs)
     }
-    with open(PDF_FILE.with_suffix('.pdf', '_paragraphs.json'), 'w') as fopen:
+    output_file = PDF_FILE.parent / 'intermediate_data' / 'NFPA 70 NEC 2023_paragraphs.json'
+    with open(output_file, 'w') as fopen:
         json.dump(output_json, fopen)
 
 if __name__ == '__main__':

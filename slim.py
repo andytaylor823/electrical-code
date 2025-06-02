@@ -14,6 +14,7 @@ PAGE_STOP = 716 # inclusive, indexing from 0
 output_text = ''
 for p in dkt.values():
     content, page = p.values()
+    content = content.encode('charmap', errors='ignore').decode('charmap') # ignore confusing characters
     if page >= PAGE_START and page <= PAGE_STOP:
         output_text += content + '\n'
 

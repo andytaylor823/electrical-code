@@ -38,7 +38,8 @@ def run(paragraphs: dict[str, dict[str, str | int]]) -> dict:
         content, page = paragraphs[str(i)].values()
 
         # Identify page start/stop
-        if content.lower().startswith('article') and content.isupper():
+        #if content.lower().startswith('article') and content.isupper():
+        if 'article' in content.lower() and content.isupper():
             paragraph_ix_page_start = i    
         if '2023 Edition NATIONAL ELECTRICAL CODE' == content:
             paragraph_ix_page_stop = i

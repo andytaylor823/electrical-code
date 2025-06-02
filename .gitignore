@@ -1,3 +1,5 @@
 src/.env
 .DS_Store
 dev.ipynb
+*__pycache__*
+vectors/
