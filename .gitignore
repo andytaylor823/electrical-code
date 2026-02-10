@@ -1,5 +1,18 @@
-src/.env
+# Environment
+.env
+.venv/
+
+# macOS
 .DS_Store
+
+# Jupyter
 dev.ipynb
+
+# Python
 *__pycache__*
+*.egg-info/
+dist/
+build/
+
+# Generated data
 vectors/

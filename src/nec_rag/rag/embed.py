@@ -1,16 +1,17 @@
-from openai import AzureOpenAI
-from dotenv import load_dotenv
+import json
+import os
+import re
 import sys
 from pathlib import Path
-import json
+
+from openai import AzureOpenAI
+from dotenv import load_dotenv
 from tqdm import tqdm
-import os
 import tiktoken
-import re
 
 BATCH_SIZE = 50
-root = Path(__file__).parent.parent.parent
-load_dotenv(root / 'src' / '.env')
+root = Path(__file__).parent.parent.parent.parent
+load_dotenv(root / '.env')
 
 
 # Create client
@@ -127,7 +128,7 @@ def main(how='sections'):
     output_json = {i: output[i] for i in range(len(output))}
     with open(output_file, 'w') as fopen:
         json.dump(output_json, fopen)
-    
+
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:

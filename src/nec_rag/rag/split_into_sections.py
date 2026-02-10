@@ -42,7 +42,7 @@ def handle_line(
         if len(current_section) > 0:
             sections.append('\n'.join(current_section).strip())
             current_section = []
-    
+
     # Check if we're at the first line of a page's endmatter
     if steps_past_page_end(line) == 1:
         skip_mode = True
@@ -63,13 +63,11 @@ def handle_line(
         skip_mode = False
 
     return sections, current_section, skip_mode
-        
-    
 
 
 # Read in cleaned paragraphs file
-root = Path(__file__).parent.parent.parent.resolve()
-PARAGRAPHS_FILE = root / 'intermediate_data' / 'NFPA 70 NEC 2023_cleaned_paragraphs.json'
+root = Path(__file__).parent.parent.parent.parent.resolve()
+PARAGRAPHS_FILE = root / 'data' / 'intermediate' / 'NFPA 70 NEC 2023_cleaned_paragraphs.json'
 with open(PARAGRAPHS_FILE, 'r') as fopen:
     paragraphs = json.load(fopen)
 
@@ -102,7 +100,7 @@ def main():
         if line.startswith(INTRO_START_PARAGRAPH_TEXT):
             in_pre = False
             in_intro = True
-        if line.startswith(DEFINITIONS_START_PARAGRAPH_TEXT): 
+        if line.startswith(DEFINITIONS_START_PARAGRAPH_TEXT):
             in_intro = False
             in_def = True
         if line.startswith(OTHER_ARTICLES_START_PARAGRAPH_TEXT):
@@ -128,7 +126,7 @@ def main():
             )
         else:
             raise ValueError("We should never get here")
-        
+
     if len(current_section) > 0:
         sections.append('\n'.join(current_section).strip())
 
@@ -149,7 +147,7 @@ def write(definitions, sections):
             #print()
             #raise
             return None
-        
+
     defs_dkt = {
         i: {
             'term': get_term(definition),

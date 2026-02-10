@@ -1,9 +1,10 @@
 import json
-root = 'NFPA 70 NEC 2023'
+from pathlib import Path
+
+root = Path(__file__).parent.parent.resolve()
+PARAGRAPHS_FILE = root / 'data' / 'intermediate' / 'NFPA 70 NEC 2023_paragraphs.json'
 
 # Read in current file
-TEXT_FILE = root + '.txt'
-PARAGRAPHS_FILE = root + '_paragraphs.json'
 with open(PARAGRAPHS_FILE, 'r') as fopen:
     dkt = json.load(fopen)
 
@@ -19,5 +20,6 @@ for p in dkt.values():
         output_text += content + '\n'
 
 # Write to file
-with open(root+'_slim.txt', 'w') as fopen:
+OUTPUT_FILE = root / 'data' / 'intermediate' / 'NFPA 70 NEC 2023_slim.txt'
+with open(OUTPUT_FILE, 'w') as fopen:
     fopen.write(output_text)

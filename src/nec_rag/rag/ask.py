@@ -1,13 +1,14 @@
-from openai import AzureOpenAI
-from dotenv import load_dotenv
-from pathlib import Path
 import json
 import os
 import sys
+from pathlib import Path
+
+from openai import AzureOpenAI
+from dotenv import load_dotenv
 
 # region -- setup
-root = Path(__file__).parent.parent
-load_dotenv(root / 'src' / '.env')
+root = Path(__file__).parent.parent.parent.parent
+load_dotenv(root / '.env')
 TOP_K = 20
 deployment = os.getenv("DEPLOYMENT_NAME", "gpt-4.1")
 
@@ -37,11 +38,11 @@ with open(sections_path, 'r') as fopen:
     sections = json.load(fopen)
 
 # Establish llm + embedding clients
-llm_client = AzureOpenAI(  
+llm_client = AzureOpenAI(
     api_key = os.getenv('AZURE_OPENAI_API_KEY'),
     azure_endpoint = os.getenv('GPT_41_ENDPOINT_URL'),
     api_version = '2025-01-01-preview'
-) 
+)
 embedding_client = AzureOpenAI(
     api_key = os.getenv('AZURE_OPENAI_API_KEY'),
     azure_endpoint = os.getenv("EMBEDDINGS_SMALL_ENDPOINT_URL"),

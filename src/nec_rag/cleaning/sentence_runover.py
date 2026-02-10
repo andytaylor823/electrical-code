@@ -40,7 +40,7 @@ def run(paragraphs: dict[str, dict[str, str | int]]) -> dict:
         # Identify page start/stop
         #if content.lower().startswith('article') and content.isupper():
         if 'article' in content.lower() and content.isupper():
-            paragraph_ix_page_start = i    
+            paragraph_ix_page_start = i
         if '2023 Edition NATIONAL ELECTRICAL CODE' == content:
             paragraph_ix_page_stop = i
         if 'NATIONAL ELECTRICAL CODE 2023 Edition' == content:
@@ -52,7 +52,7 @@ def run(paragraphs: dict[str, dict[str, str | int]]) -> dict:
             p2 = paragraphs[str(paragraph_ix_page_start+1)]['content']
             paragraph_ix_page_start = 0
 
-            # and if we have a run-over sentence, 
+            # and if we have a run-over sentence,
             if sentence_runs_over(p1, p2):
                 # make the sentence whole again, and assign to the first paragraph/page slot
                 new_output[str(paragraph_ix_page_stop-1)] = {
@@ -63,7 +63,7 @@ def run(paragraphs: dict[str, dict[str, str | int]]) -> dict:
                 # Remove tail end of the sentence
                 del new_output[str(i+1)]
                 skip_next = True
-    
+
     # Reorder dict with consecutive integer keys
     new_output = resort_dict(new_output)
 
@@ -74,8 +74,8 @@ if __name__ == '__main__':
     from pathlib import Path
 
     # Read in big paragraphs file
-    root = Path(__file__).parent.parent.parent.resolve() / 'NFPA 70 NEC 2023'
-    PARAGRAPHS_FILE = str(root) + '_paragraphs.json'
+    root = Path(__file__).parent.parent.parent.parent.resolve()
+    PARAGRAPHS_FILE = root / 'data' / 'intermediate' / 'NFPA 70 NEC 2023_paragraphs.json'
     with open(PARAGRAPHS_FILE, 'r') as fopen:
         paragraphs = json.load(fopen)
 
@@ -83,6 +83,6 @@ if __name__ == '__main__':
     output = run(paragraphs)
 
     # Output
-    OUTPUT_FILE = str(root) + '_cleaned_paragraphs.json'
+    OUTPUT_FILE = root / 'data' / 'intermediate' / 'NFPA 70 NEC 2023_cleaned_paragraphs.json'
     with open(OUTPUT_FILE, 'w') as fopen:
         json.dump(output, fopen)
