@@ -1,6 +1,0 @@
-openai
-ipykernel
-dotenv
-azure-ai-ml
-azure-common
-azure-ai-documentintelligence

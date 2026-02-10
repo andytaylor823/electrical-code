@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nec-rag"
+version = "0.1.0"
+description = "RAG application for answering questions about the NFPA 70 National Electrical Code"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "openai",
+    "python-dotenv",
+    "tqdm",
+    "tiktoken",
+    "azure-ai-ml",
+    "azure-common",
+    "azure-ai-documentintelligence",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel",
+    "pylint",
+    "pytest",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nec_rag"]
+
+[tool.pylint.main]
+ignore-paths = ["tests/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
