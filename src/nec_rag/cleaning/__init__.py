@@ -1,1 +1,1 @@
-"""Cleaning pipeline for OCR output and text processing."""
+"""Cleaning pipeline for OCR paragraph data. See clean.py for the main entry point."""
