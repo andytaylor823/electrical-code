@@ -1,7 +1,14 @@
+# Semi-processed data
+data/intermediate/
+data/prepared/
+
 # Environment
 .env
 .venv/
 AGENTS.md
+.vscode/
+.cursor/
+
 
 # macOS
 .DS_Store

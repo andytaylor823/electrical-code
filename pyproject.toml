@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "nec-rag"
@@ -11,6 +11,7 @@ license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
     "openai",
+    "pydantic",
     "python-dotenv",
     "tqdm",
     "tiktoken",
@@ -26,11 +27,56 @@ dev = [
     "pytest",
 ]
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/nec_rag"]
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+exclude = ["tests", "scripts", "examples", "static"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.black]
+line-length = 180
+fast = true
+
+[tool.isort]
+profile = "black"
 
 [tool.pylint.main]
 ignore-paths = ["tests/"]
+
+[tool.pylint.FORMAT]
+ignore-long-lines = "^\\s*(# )?.*['\"]?<?https?://\\S+>?"
+indent-after-paren = 4
+max-line-length = 180
+max-args = 8
+max-positional-arguments = 8
+max-attributes = 15
+max-locals = 20
+generated-members = "cv2.*"
+
+[tool.pylint.BASIC]
+argument-naming-style = "snake_case"
+attr-naming-style = "snake_case"
+class-attribute-naming-style = "any"
+class-naming-style = "PascalCase"
+const-naming-style = "UPPER_CASE"
+docstring-min-length = -1
+function-naming-style = "snake_case"
+include-naming-hint = "yes"
+
+[tool.pylint.TYPECHECK]
+ignore-none = "yes"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
