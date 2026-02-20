@@ -85,13 +85,13 @@ Step 6 produces the final structured output in `data/prepared/`:
 Run the cleaning pipeline (steps 1–5) from the project root:
 
 ```bash
-python -m nec_rag.cleaning.clean
+python -m nec_rag.data_preprocessing.text_cleaning.clean
 ```
 
 Run the structuring step (step 6) separately:
 
 ```bash
-python -m nec_rag.cleaning.structure
+python -m nec_rag.data_preprocessing.text_cleaning.structure
 ```
 
 Each sub-step can also be run independently via its own `__main__` block for debugging or development.

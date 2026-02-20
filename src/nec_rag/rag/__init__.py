@@ -1,1 +1,1 @@
-"""RAG agent, embeddings, and section splitting."""
+"""RAG question-answering agent with citation verification."""

@@ -22,7 +22,7 @@ Known limitations of the existing OCR output:
   - Tables were NOT detected as structured objects by Document Intelligence.
     Instead, individual table cells were captured as separate paragraphs in
     reading order (left-to-right, top-to-bottom).  This means the downstream
-    cleaning pipeline (see src/nec_rag/cleaning/tables.py) must reconstruct
+    cleaning pipeline (see src/nec_rag/data_preprocessing/tables/tables.py) must reconstruct
     table structure from the flat paragraph stream.
   - Two-column page layouts cause the OCR to read the left column first, then
     the right column.  When a table spans both columns, its content may be

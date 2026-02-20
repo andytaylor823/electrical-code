@@ -7,8 +7,8 @@ Tests cover:
   - clean: full pipeline integration and text conversion
 """
 
-from nec_rag.cleaning import hyphens_endline, remove_junk_pages, sentence_runover
-from nec_rag.cleaning.clean import paragraphs_to_text, run_cleaning_pipeline
+from nec_rag.data_preprocessing.text_cleaning import hyphens_endline, remove_junk_pages, sentence_runover
+from nec_rag.data_preprocessing.text_cleaning.clean import paragraphs_to_text, run_cleaning_pipeline
 
 # ---------------------------------------------------------------------------
 # Helpers to build paragraph dicts quickly

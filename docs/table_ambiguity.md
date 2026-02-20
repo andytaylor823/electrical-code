@@ -8,7 +8,7 @@ OCR did **not** detect table structures, so there is no metadata about column co
 header rows, merged cells, or row boundaries.
 
 The cleaning pipeline must reconstruct table structure from this flat paragraph
-stream.  A procedural approach was implemented in `src/nec_rag/cleaning/tables.py`
+stream.  A procedural approach was implemented in `src/nec_rag/data_preprocessing/tables/tables.py`
 that detects table boundaries, extracts cell content, classifies headers vs. data,
 and formats the result as markdown.
 

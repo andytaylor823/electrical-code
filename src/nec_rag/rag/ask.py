@@ -1,56 +1,43 @@
+"""Ask a question against the NEC RAG pipeline.
+
+Embeds the user's question, retrieves the top-K most relevant subsections from
+ChromaDB, then asks Azure OpenAI GPT for an answer with citation verification.
+
+Supports multiple embedding models via --model (must match what was used in embed.py).
+
+Usage:
+    python -m nec_rag.rag.ask                         # default: qwen3
+    python -m nec_rag.rag.ask --model azure-large     # use Azure embeddings
+"""
+
+import argparse
 import json
+import logging
 import os
 import sys
-from pathlib import Path
+import time
 
-from openai import AzureOpenAI
+import chromadb
 from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+from nec_rag.data_preprocessing.embedding.config import COLLECTION_NAME, MODELS, ROOT, chroma_path
+
+logger = logging.getLogger(__name__)
 
 # region -- setup
-root = Path(__file__).parent.parent.parent.parent
-load_dotenv(root / '.env')
+load_dotenv(ROOT / ".env")
+
 TOP_K = 20
-deployment = os.getenv("DEPLOYMENT_NAME", "gpt-4.1")
 
-def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
-    if len(vec1) != len(vec2):
-        raise ValueError("Vectors must be of the same length")
-
-    dot_product = sum(a * b for a, b in zip(vec1, vec2))
-    norm1 = sum(a * a for a in vec1) ** 0.5
-    norm2 = sum(b * b for b in vec2) ** 0.5
-
-    if norm1 == 0 or norm2 == 0:
-        raise ValueError("Cosine similarity is undefined for zero-length vectors")
-
-    return dot_product / (norm1 * norm2)
-
-
-# Load previously-computed vector embeddings
-print('Loading vectors and text...')
-vector_path = root / 'vectors' / 'sections_vector.json'
-with open(vector_path, 'r') as fopen:
-    vectors = json.load(fopen)
-
-# Load sections text
-sections_path = root / 'vectors' / 'sections.json'
-with open(sections_path, 'r') as fopen:
-    sections = json.load(fopen)
-
-# Establish llm + embedding clients
-llm_client = AzureOpenAI(
-    api_key = os.getenv('AZURE_OPENAI_API_KEY'),
-    azure_endpoint = os.getenv('GPT_41_ENDPOINT_URL'),
-    api_version = '2025-01-01-preview'
-)
-embedding_client = AzureOpenAI(
-    api_key = os.getenv('AZURE_OPENAI_API_KEY'),
-    azure_endpoint = os.getenv("EMBEDDINGS_SMALL_ENDPOINT_URL"),
-    api_version = '2023-05-15'
+LLM_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.2-chat")
+LLM_CLIENT = AzureOpenAI(
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
 )
 
-# Define prompt templates
-answer_prompt_template = """You are a legal expert with domain expertise in electrical codes. Given the following context from the National
+ANSWER_PROMPT_TEMPLATE = """You are a legal expert with domain expertise in electrical codes. Given the following context from the National
 Electrical Code (NEC), answer the following question.
 
 Answer concisely, and cite your source from the provided NEC text. If the answer is not found in the provided context, you may draw upon your training knowledge, but be sure to note that the answer was not found in the provided NEC context.
@@ -62,7 +49,7 @@ NEC text:
 {context}
 """
 
-verification_prompt_template = """
+VERIFICATION_PROMPT_TEMPLATE = """
 You are a fact-checker whose job is to evaluate the correctness of citations of a large language model (LLM). You will be provided:
 (1) the QUESTION that the LLM was asked,
 (2) the associated CONTEXT that was provided for the LLM to answer the question, and
@@ -80,78 +67,139 @@ ANSWER:
 {answer}
 """
 
-
 # endregion
 
 
-# ENTRY POINT!
+def load_resources(model_key: str):
+    """Load the embedding model/client and ChromaDB collection.
 
-# Get question from user
-print()
-user_prompt = "Enter a question to ask the RAG app:\n>> "
-question = input(user_prompt)
-if question.lower() == 'x': sys.exit(10) # skip gate
+    Returns (embed_fn, collection) where embed_fn accepts a string and returns a list[float].
+    """
+    model_cfg = MODELS[model_key]
 
-# Embed question
-question_embedded = embedding_client.embeddings.create(
-    input=question,
-    model='text-embeddings-3-small'
-).data[0].embedding
+    # Build the query embedding function based on model type
+    if model_cfg["type"] == "local":
+        import torch  # pylint: disable=import-outside-toplevel
+        from sentence_transformers import SentenceTransformer  # pylint: disable=import-outside-toplevel
 
-# Create cosine sim dict and sort
-similarities = {
-    key: cosine_similarity(question_embedded, val)
-    for key, val in vectors.items()
-}
-sorted_keys = sorted(similarities, key=similarities.get, reverse=True)
-sorted_sections = [sections[key] for key in sorted_keys]
+        logger.info("Loading local embedding model '%s'...", model_cfg["display_name"])
+        t0 = time.time()
+        st_model = SentenceTransformer(
+            model_cfg["display_name"],
+            model_kwargs={"torch_dtype": torch.float16},
+            tokenizer_kwargs={"padding_side": "left"},
+        )
+        logger.info("Model loaded in %.1f seconds", time.time() - t0)
 
-# Create context and then prompt
-context = '\n'.join([sorted_sections[i]['section'] for i in range(TOP_K)])
-answer_prompt = answer_prompt_template.format(question=question, context=context)
-chat_messages = [
-    {
-        'role': 'user',
-        'content': answer_prompt
-    }
-]
+        def embed_fn(text: str) -> list[float]:
+            return st_model.encode(text, prompt_name="query").tolist()
 
-# Ask LLM
-print('Asking LLM question...')
-response = llm_client.chat.completions.create(
-    model=deployment,
-    messages=chat_messages
-)
-answer = json.loads(response.to_json())['choices'][0]['message']['content']
+    elif model_cfg["type"] == "azure":
+        embedding_client = AzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
+        )
+        logger.info("Using Azure OpenAI embedding model '%s'", model_cfg["display_name"])
+
+        def embed_fn(text: str) -> list[float]:  # type: ignore[misc]
+            response = embedding_client.embeddings.create(input=text, model=model_cfg["display_name"])
+            return response.data[0].embedding
+
+    else:
+        raise ValueError(f"Unknown model type: {model_cfg['type']}")
+
+    # Load ChromaDB collection
+    store_path = chroma_path(model_key)
+    client = chromadb.PersistentClient(path=str(store_path))
+    collection = client.get_collection(name=COLLECTION_NAME)
+    logger.info("ChromaDB collection '%s' loaded with %d items from %s", COLLECTION_NAME, collection.count(), store_path)
+
+    return embed_fn, collection
 
 
-# Create second prompt for source-citing verification
-verification_prompt = verification_prompt_template.format(
-    question=question,
-    context=context,
-    answer=answer
-)
-# some comment
-chat_messages_2 = [
-    {
-        'role': 'user',
-        'content': verification_prompt
-    }
-]
+def retrieve(question: str, embed_fn, collection: chromadb.Collection) -> list[dict]:
+    """Embed the question and retrieve the top-K most relevant subsections."""
+    query_embedding = embed_fn(question)
 
-# Ask another LLM to verify
-print('Asking follow-up verification of cited sources...')
-response2 = llm_client.chat.completions.create(
-    model=deployment,
-    messages=chat_messages_2
-)
-answer2 = json.loads(response2.to_json())['choices'][0]['message']['content']
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=TOP_K,
+        include=["documents", "metadatas", "distances"],
+    )
 
-# Print output
-print()
-print('Initial answer:', answer)
-print()
-if 'all good' in answer2.lower():
-    print('Initial provided answer was correct!')
-else:
-    print('Corrected:', answer2)
+    # Unpack ChromaDB's nested list structure (single query -> index 0)
+    retrieved = []
+    for doc, meta, dist in zip(results["documents"][0], results["metadatas"][0], results["distances"][0]):
+        retrieved.append({"document": doc, "metadata": meta, "distance": dist})
+    return retrieved
+
+
+def build_context(retrieved: list[dict]) -> str:
+    """Build the context string from retrieved subsections, annotated with source info."""
+    sections = []
+    for item in retrieved:
+        meta = item["metadata"]
+        header = f"[Section {meta['section_id']}, Article {meta['article_num']}, page {meta['page']}]"
+        sections.append(f"{header}\n{item['document']}")
+    return "\n\n".join(sections)
+
+
+def ask_llm(question: str, context: str) -> tuple[str, str]:
+    """Send the question + context to GPT and run citation verification. Returns (answer, verification)."""
+    answer_prompt = ANSWER_PROMPT_TEMPLATE.format(question=question, context=context)
+    logger.info("Asking LLM for answer...")
+    response = LLM_CLIENT.chat.completions.create(
+        model=LLM_DEPLOYMENT,
+        messages=[{"role": "user", "content": answer_prompt}],
+    )
+    answer = json.loads(response.to_json())["choices"][0]["message"]["content"]
+
+    verification_prompt = VERIFICATION_PROMPT_TEMPLATE.format(question=question, context=context, answer=answer)
+    logger.info("Asking LLM for citation verification...")
+    response2 = LLM_CLIENT.chat.completions.create(
+        model=LLM_DEPLOYMENT,
+        messages=[{"role": "user", "content": verification_prompt}],
+    )
+    verification = json.loads(response2.to_json())["choices"][0]["message"]["content"]
+
+    return answer, verification
+
+
+def main():
+    """Interactive loop: load model once, then accept questions until user quits."""
+    parser = argparse.ArgumentParser(description="Ask questions against the NEC RAG pipeline")
+    parser.add_argument("--model", choices=list(MODELS.keys()), default="qwen3", help="Which embedding model to use for retrieval (default: qwen3)")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    embed_fn, collection = load_resources(args.model)
+    logger.info("Using embedding model: %s", MODELS[args.model]["display_name"])
+
+    print()
+    while True:
+        question = input("Enter a question to ask the RAG app (or 'x' to quit):\n>> ")
+        if question.strip().lower() == "x":
+            sys.exit(0)
+
+        # Retrieve relevant context
+        retrieved = retrieve(question, embed_fn, collection)
+        context = build_context(retrieved)
+
+        # Ask GPT
+        answer, verification = ask_llm(question, context)
+
+        # Display results
+        print()
+        print("Answer:", answer)
+        print()
+        if "all good" in verification.lower():
+            print("Citation verification: PASSED")
+        else:
+            print("Corrected:", verification)
+        print()
+
+
+if __name__ == "__main__":
+    main()

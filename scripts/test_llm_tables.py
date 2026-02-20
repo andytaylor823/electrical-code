@@ -29,7 +29,8 @@ load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT / "src"))
 
 # pylint: disable=wrong-import-position
-from nec_rag.cleaning import remove_junk_pages, tables  # noqa: E402
+from nec_rag.data_preprocessing.tables import tables  # noqa: E402
+from nec_rag.data_preprocessing.text_cleaning import remove_junk_pages  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s")
 logger = logging.getLogger(__name__)
