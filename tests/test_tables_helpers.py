@@ -13,17 +13,7 @@ global mutable state.
 import pytest
 from pydantic import ValidationError
 
-from nec_rag.data_preprocessing.tables.tables import (
-    TableStructure,
-    _find_post_paragraph,
-    _find_pre_paragraph,
-    _format_text_block,
-    _is_real_table_start,
-    _render_markdown,
-    detect_interruption,
-    extract_table_content,
-    find_table_end,
-    find_table_starts,
+from nec_rag.data_preprocessing.tables.classifiers import (
     get_table_id,
     is_continuation_marker,
     is_data_like,
@@ -31,8 +21,19 @@ from nec_rag.data_preprocessing.tables.tables import (
     is_page_marker,
     is_section_boundary,
     is_table_title,
-    resort_dict,
 )
+from nec_rag.data_preprocessing.tables.detection import (
+    _find_post_paragraph,
+    _find_pre_paragraph,
+    _is_real_table_start,
+    detect_interruption,
+    extract_table_content,
+    find_table_end,
+    find_table_starts,
+)
+from nec_rag.data_preprocessing.tables.formatting import _format_text_block, _render_markdown
+from nec_rag.data_preprocessing.tables.pipeline import resort_dict
+from nec_rag.data_preprocessing.tables.schema import TableStructure
 
 
 def make_paragraphs(items: list[tuple[str, int]]) -> dict[str, dict]:
