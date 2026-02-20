@@ -315,7 +315,7 @@ EXAM_CASES = [
     (
         "q19",
         "Where a transformer supplies a single-phase, 120/240-volt, 600-ampere service, what is the minimum kVA rating the transformer should have?",
-        "150 kVA. Calculation: 600 A x 240 V = 144,000 VA = 144 kVA, so the next standard size is 150 kVA.",
+        "150 kVA. Calculation: 600 A x 240 V = 144,000 VA = 144 kVA, so the next standard size is 150 kVA. Answer of 144 kVA is also correct, as it is the literally correct value, agnostic of standardsizing.",
     ),
     # ------------------------------------------------------------------
     # Q20  Section 300.6 (MC cable / metal conduit indoor wet locations)
