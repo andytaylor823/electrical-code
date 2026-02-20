@@ -13,7 +13,7 @@ import chromadb
 from langchain_core.tools import tool
 
 from nec_rag.agent.prompts import VISION_SYSTEM_PROMPT
-from nec_rag.agent.resources import get_vision_client, get_vision_deployment, load_embedding_resources
+from nec_rag.agent.resources import get_vision_client, get_vision_deployment, load_embedding_resources, load_table_index
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +42,67 @@ def _retrieve(query: str, embed_fn, collection: chromadb.Collection, n_results: 
 
 
 def _build_context(retrieved: list[dict]) -> str:
-    """Format retrieved subsections into a markdown context string with source annotations."""
+    """Format retrieved subsections into a markdown context string with source annotations.
+
+    Reads the pre-computed ``referenced_tables`` metadata on each chunk to
+    collect every table mentioned across the retrieved subsections, then
+    appends the full table content so the agent can reason over it.
+    """
     sections = []
+    all_ref_ids: set[str] = set()
+
     for item in retrieved:
         meta = item["metadata"]
         header = f"[Section {meta['section_id']}, Article {meta['article_num']}, page {meta['page']}]"
         sections.append(f"{header}\n{item['document']}")
-    return "\n\n".join(sections)
+
+        # Gather table IDs from the comma-separated metadata field
+        refs_csv = meta.get("referenced_tables", "")
+        if refs_csv:
+            all_ref_ids.update(refs_csv.split(","))
+
+    context_body = "\n\n".join(sections)
+
+    # Look up and format every referenced table
+    table_blocks = _resolve_table_refs(sorted(all_ref_ids))
+    if table_blocks:
+        context_body += "\n\n" + "=" * 60 + "\nREFERENCED TABLES\n" + "=" * 60 + "\n\n"
+        context_body += "\n\n".join(table_blocks)
+
+    return context_body
+
+
+def _format_table_as_markdown(table: dict) -> str:
+    """Render a structured table dict as a readable markdown table with footnotes."""
+    lines = [f"**{table['title']}**"]
+
+    headers = table["column_headers"]
+    if headers:
+        lines.append("| " + " | ".join(headers) + " |")
+        lines.append("| " + " | ".join("---" for _ in headers) + " |")
+        for row in table["data_rows"]:
+            lines.append("| " + " | ".join(row) + " |")
+
+    for footnote in table.get("footnotes", []):
+        lines.append(f"> {footnote}")
+
+    return "\n".join(lines)
+
+
+def _resolve_table_refs(ref_ids: list[str]) -> list[str]:
+    """Look up table IDs in the structured data and return formatted markdown blocks."""
+    if not ref_ids:
+        return []
+
+    table_index = load_table_index()
+    blocks = []
+    for ref_id in ref_ids:
+        table = table_index.get(ref_id)
+        if table:
+            blocks.append(_format_table_as_markdown(table))
+        else:
+            logger.debug("Table reference '%s' not found in index", ref_id)
+    return blocks
 
 
 # ---------------------------------------------------------------------------

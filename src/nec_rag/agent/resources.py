@@ -4,8 +4,10 @@ Handles loading and caching of:
 - Embedding models (local sentence-transformers or Azure OpenAI)
 - ChromaDB vector store collections
 - LLM clients (agent chat model, standalone vision model)
+- Table index (table_id -> table dict from structured JSON)
 """
 
+import json
 import logging
 import os
 
@@ -28,6 +30,7 @@ _CACHE: dict = {
     "collection": None,
     "agent_llm": None,
     "vision_client": None,
+    "table_index": None,
 }
 
 
@@ -87,6 +90,38 @@ def load_embedding_resources(model_key: str = "azure-large"):
     logger.info("ChromaDB collection '%s' loaded (%d items) from %s", COLLECTION_NAME, _CACHE["collection"].count(), store_path)
 
     return _CACHE["embed_fn"], _CACHE["collection"]
+
+
+# ---------------------------------------------------------------------------
+# Table index (table_id -> table dict from structured JSON)
+# ---------------------------------------------------------------------------
+
+STRUCTURED_JSON_PATH = ROOT / "data" / "prepared" / "NFPA 70 NEC 2023_structured.json"
+
+
+def load_table_index() -> dict[str, dict]:
+    """Build a lookup from normalised table ID to its structured dict, caching for reuse.
+
+    Walks every chapter > article in the structured JSON and indexes each table
+    by its 'id' field (e.g. 'Table220.55').
+    """
+    if _CACHE["table_index"] is not None:
+        return _CACHE["table_index"]
+
+    logger.info("Building table index from %s", STRUCTURED_JSON_PATH)
+    with open(STRUCTURED_JSON_PATH, "r", encoding="utf-8") as fopen:
+        data = json.load(fopen)
+
+    # Walk the hierarchy and collect every table, keyed by normalised ID
+    index: dict[str, dict] = {}
+    for chapter in data["chapters"]:
+        for article in chapter["articles"]:
+            for table in article["tables"]:
+                index[table["id"]] = table
+
+    _CACHE["table_index"] = index
+    logger.info("Table index built: %d tables", len(index))
+    return index
 
 
 # ---------------------------------------------------------------------------

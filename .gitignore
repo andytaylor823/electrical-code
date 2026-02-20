@@ -25,3 +25,6 @@ build/
 # Generated data
 vectors/
 data/vectors/
+
+# Integration test logs
+tests_integration/logs/

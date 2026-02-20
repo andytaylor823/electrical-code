@@ -65,6 +65,9 @@ def chunk_subsections(data: dict) -> list[dict]:
         text = _build_subsection_text(subsection)
         doc_id = _deduplicated_id(parent_meta["article_num"], section_id, seen_ids)
 
+        # Comma-separated string because ChromaDB metadata values must be scalars
+        referenced_tables = ",".join(subsection.get("referenced_tables", []))
+
         chunks.append(
             {
                 "id": doc_id,
@@ -73,6 +76,7 @@ def chunk_subsections(data: dict) -> list[dict]:
                     "section_id": section_id,
                     "title": subsection["title"][:500],  # ChromaDB metadata values must be <32KB
                     "page": subsection["page"],
+                    "referenced_tables": referenced_tables,
                     **parent_meta,
                 },
             }
