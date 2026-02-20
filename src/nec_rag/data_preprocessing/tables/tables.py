@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # ─── Project Root & Environment ───────────────────────────────────────────────
 
-ROOT = Path(__file__).parent.parent.parent.parent.resolve()
+ROOT = Path(__file__).parent.parent.parent.parent.parent.resolve()
 load_dotenv(ROOT / ".env")
 
 

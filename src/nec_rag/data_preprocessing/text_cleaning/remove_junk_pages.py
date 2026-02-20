@@ -31,7 +31,7 @@ if __name__ == "__main__":
     from pathlib import Path
 
     # Read in big paragraphs file
-    root = Path(__file__).parent.parent.parent.parent.resolve()
+    root = Path(__file__).parent.parent.parent.parent.parent.resolve()
     PARAGRAPHS_FILE = root / "data" / "raw" / "NFPA 70 NEC 2023_paragraphs.json"
     with open(PARAGRAPHS_FILE, "r", encoding="utf-8") as fopen:
         paragraphs = json.load(fopen)

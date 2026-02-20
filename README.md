@@ -11,8 +11,11 @@ WIP RAG application to answer questions relating to the NFPA 70 electrical code.
 ├── scripts/                    # Standalone utility scripts
 ├── src/
 │   └── nec_rag/                # Main Python package
-│       ├── cleaning/           # OCR + text cleaning pipeline
-│       └── rag/                # RAG agent + embeddings
+│       ├── data_preprocessing/ # Data pipeline
+│       │   ├── text_cleaning/  # OCR text cleaning (5-step pipeline + structuring)
+│       │   ├── tables/         # Table detection & LLM reconstruction
+│       │   └── embedding/      # Chunking, embedding, vector storage
+│       └── rag/                # Question-answering agent
 ├── tests/                      # Test scripts
 └── frontend/                   # Future frontend app
 ```
@@ -39,22 +42,22 @@ DEPLOYMENT_NAME=gpt-4.1
 
 1. **OCR**: Extract text from source PDF
    ```bash
-   python -m nec_rag.cleaning.ocr
+   python scripts/ocr.py
    ```
 
 2. **Clean**: Run the text cleaning pipeline
    ```bash
-   python -m nec_rag.cleaning.clean
+   python -m nec_rag.data_preprocessing.text_cleaning.clean
    ```
 
-3. **Split**: Break cleaned text into sections and definitions
+3. **Structure**: Parse cleaned text into hierarchical JSON
    ```bash
-   python -m nec_rag.rag.split_into_sections
+   python -m nec_rag.data_preprocessing.text_cleaning.structure
    ```
 
 4. **Embed**: Generate vector embeddings for sections
    ```bash
-   python -m nec_rag.rag.embed
+   python -m nec_rag.data_preprocessing.embedding.embed
    ```
 
 5. **Ask**: Query the RAG application

@@ -454,7 +454,7 @@ def main():
 
     # Re-run the full cleaning pipeline
     logger.info("Re-running cleaning pipeline...")
-    from nec_rag.cleaning.clean import load_paragraphs, run_cleaning_pipeline, save_outputs  # pylint: disable=wrong-import-position,import-outside-toplevel
+    from nec_rag.data_preprocessing.text_cleaning.clean import load_paragraphs, run_cleaning_pipeline, save_outputs  # pylint: disable=wrong-import-position,import-outside-toplevel
 
     output_dir = ROOT / "data" / "intermediate"
     raw = load_paragraphs()

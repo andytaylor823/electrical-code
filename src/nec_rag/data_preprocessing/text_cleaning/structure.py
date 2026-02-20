@@ -18,7 +18,7 @@ Output: a single JSON file with two top-level keys:
     "definitions" - flat list of definition dicts
 
 Usage:
-    python -m nec_rag.cleaning.structure
+    python -m nec_rag.data_preprocessing.text_cleaning.structure
 """
 
 import json
@@ -26,13 +26,13 @@ import logging
 import re
 from pathlib import Path
 
-from nec_rag.cleaning import remove_page_furniture
+from nec_rag.data_preprocessing.text_cleaning import remove_page_furniture
 
 logger = logging.getLogger(__name__)
 
 # ── Project root ─────────────────────────────────────────────────────────────
 
-ROOT = Path(__file__).parent.parent.parent.parent.resolve()
+ROOT = Path(__file__).parent.parent.parent.parent.parent.resolve()
 
 # ── Regex patterns for structural boundaries ─────────────────────────────────
 
@@ -96,6 +96,23 @@ def _normalise_table_id(bold_title: str) -> str:
     if token_match:
         return token_match.group(1).replace(" ", "")
     return stripped
+
+
+# ── Inline table-reference extraction ─────────────────────────────────────────
+
+# Matches inline refs like "Table 220.55", "Table 110.26(A) (1)", etc.
+# Intentionally excludes Chapter 9 table refs (e.g. "Chapter 9, Table 10").
+INLINE_TABLE_REF_RE = re.compile(r"Table\s+\d+\.\d+(?:\s*\([^)]*\))*")
+
+
+def _extract_table_refs(text: str) -> list[str]:
+    """Extract and normalise table IDs referenced in body text.
+
+    Returns a sorted, deduplicated list of IDs with spaces removed
+    (e.g. 'Table220.55', 'Table110.26(A)(1)') to match article-level table IDs.
+    """
+    raw_refs = INLINE_TABLE_REF_RE.findall(text)
+    return sorted(set(ref.replace(" ", "") for ref in raw_refs))
 
 
 # ── Markdown table parser ────────────────────────────────────────────────────
@@ -288,12 +305,18 @@ class _ParserState:  # pylint: disable=too-many-instance-attributes
             return
 
         front_matter, sub_items = _split_sub_items(self.subsection_paragraphs)
+
+        # Collect table refs from all text in this subsection
+        all_text = front_matter + "\n" + "\n".join(item["content"] for item in sub_items)
+        referenced_tables = _extract_table_refs(all_text)
+
         subsection_dict = {
             "id": self.subsection_id,
             "title": self.subsection_title,
             "page": self.subsection_page,
             "front_matter": front_matter,
             "sub_items": sub_items,
+            "referenced_tables": referenced_tables,
         }
 
         if self.article_num is not None:
@@ -469,13 +492,15 @@ def structure_paragraphs(paragraphs: dict[str, dict]) -> dict:
 
     total_subsections = sum(len(subs) for art in state.articles.values() for subs in art["parts_subsections"].values())
     total_tables = sum(len(art["tables"]) for art in state.articles.values())
+    subs_with_refs = sum(1 for art in state.articles.values() for subs in art["parts_subsections"].values() for s in subs if s.get("referenced_tables"))
     logger.info(
-        "Structured %d definitions, %d articles, %d subsections, %d tables across %d chapters",
+        "Structured %d definitions, %d articles, %d subsections, %d tables across %d chapters (%d subsections reference tables)",
         len(state.definitions),
         len(state.articles),
         total_subsections,
         total_tables,
         len(chapters),
+        subs_with_refs,
     )
 
     return {
@@ -499,16 +524,35 @@ def _assemble_chapters(articles: dict[int, dict]) -> list[dict]:
             continue
 
         ch_num, _ = chapter_info
+        parts = _build_parts_list(art)
+
+        # Article-level referenced_tables: union of all its parts' refs
+        article_refs = sorted(set(ref for part in parts for ref in part.get("referenced_tables", [])))
+
         chapter_articles.setdefault(ch_num, []).append(
             {
                 "article_num": art["article_num"],
                 "title": art["title"],
                 "tables": art["tables"],
-                "parts": _build_parts_list(art),
+                "parts": parts,
+                "referenced_tables": article_refs,
             }
         )
 
-    return [{"chapter_num": ch_num, "title": CHAPTER_MAP[ch_num]["title"], "articles": chapter_articles[ch_num]} for ch_num in sorted(chapter_articles.keys())]
+    chapters = []
+    for ch_num in sorted(chapter_articles.keys()):
+        arts = chapter_articles[ch_num]
+        # Chapter-level referenced_tables: union of all its articles' refs
+        chapter_refs = sorted(set(ref for a in arts for ref in a.get("referenced_tables", [])))
+        chapters.append(
+            {
+                "chapter_num": ch_num,
+                "title": CHAPTER_MAP[ch_num]["title"],
+                "articles": arts,
+                "referenced_tables": chapter_refs,
+            }
+        )
+    return chapters
 
 
 def _build_parts_list(article: dict) -> list[dict]:
@@ -516,21 +560,34 @@ def _build_parts_list(article: dict) -> list[dict]:
 
     Articles with explicit Part headers get one entry per part.
     Articles without explicit parts get a single implicit part (part_num=null).
+    Each part gets a ``referenced_tables`` list: the union of its subsections' refs.
     """
     parts_ordered = article["parts_ordered"]
     parts_subsections = article["parts_subsections"]
 
     if not parts_ordered:
-        return [{"part_num": None, "title": None, "subsections": parts_subsections.get(None, [])}]
+        subs = parts_subsections.get(None, [])
+        return [_build_part_dict(None, None, subs)]
 
-    parts = [{"part_num": pn, "title": pt, "subsections": parts_subsections.get(pn, [])} for pn, pt in parts_ordered]
+    parts = [_build_part_dict(pn, pt, parts_subsections.get(pn, [])) for pn, pt in parts_ordered]
 
     # Subsections filed under None appeared before the first Part header
     leading = parts_subsections.get(None, [])
     if leading:
-        parts.insert(0, {"part_num": None, "title": None, "subsections": leading})
+        parts.insert(0, _build_part_dict(None, None, leading))
 
     return parts
+
+
+def _build_part_dict(part_num: str | None, title: str | None, subsections: list[dict]) -> dict:
+    """Construct a part dict with referenced_tables propagated from subsections."""
+    part_refs = sorted(set(ref for sub in subsections for ref in sub.get("referenced_tables", [])))
+    return {
+        "part_num": part_num,
+        "title": title,
+        "subsections": subsections,
+        "referenced_tables": part_refs,
+    }
 
 
 # ── CLI entry point ──────────────────────────────────────────────────────────

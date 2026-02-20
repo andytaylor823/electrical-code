@@ -14,21 +14,22 @@ Then exports two final outputs into data/intermediate/:
   - NFPA 70 NEC 2023_clean.txt   (plain text concatenation of cleaned paragraphs)
 
 Usage:
-  python -m nec_rag.cleaning.clean
+  python -m nec_rag.data_preprocessing.text_cleaning.clean
 """
 
 import json
 import logging
 from pathlib import Path
 
-from nec_rag.cleaning import hyphens_endline, remove_junk_pages, remove_page_furniture, sentence_runover, tables
+from nec_rag.data_preprocessing.tables import tables
+from nec_rag.data_preprocessing.text_cleaning import hyphens_endline, remove_junk_pages, remove_page_furniture, sentence_runover
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Resolve paths
-ROOT = Path(__file__).parent.parent.parent.parent.resolve()
+ROOT = Path(__file__).parent.parent.parent.parent.parent.resolve()
 PARAGRAPHS_FILE = ROOT / "data" / "raw" / "NFPA 70 NEC 2023_paragraphs.json"
 OUTPUT_DIR = ROOT / "data" / "intermediate"
 

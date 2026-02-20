@@ -22,7 +22,7 @@ Patterns removed
 import logging
 import re
 
-from nec_rag.cleaning.remove_junk_pages import resort_dict
+from nec_rag.data_preprocessing.text_cleaning.remove_junk_pages import resort_dict
 
 logger = logging.getLogger(__name__)
 

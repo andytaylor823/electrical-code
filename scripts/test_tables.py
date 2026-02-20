@@ -18,7 +18,8 @@ import json
 import logging
 from pathlib import Path
 
-from nec_rag.cleaning import remove_junk_pages, tables
+from nec_rag.data_preprocessing.tables import tables
+from nec_rag.data_preprocessing.text_cleaning import remove_junk_pages
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 

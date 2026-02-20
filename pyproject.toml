@@ -18,6 +18,9 @@ dependencies = [
     "azure-ai-ml",
     "azure-common",
     "azure-ai-documentintelligence",
+    "chromadb",
+    "sentence-transformers>=2.7.0",
+    "torch",
 ]
 
 [project.optional-dependencies]

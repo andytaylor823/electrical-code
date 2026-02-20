@@ -11,7 +11,7 @@ automated triage of failures, and manual interactive correction.
 
 ## Phase 1: Automated LLM Reconstruction
 
-**Module:** `src/nec_rag/cleaning/tables.py`  
+**Module:** `src/nec_rag/data_preprocessing/tables/tables.py`  
 **Pipeline position:** Step 2 of the cleaning pipeline (`clean.py`), runs
 after `remove_junk_pages` and before `sentence_runover`.
 
@@ -314,8 +314,8 @@ script) rather than from a `table_<ID>.json` file.
 
 | File | Role |
 |------|------|
-| `src/nec_rag/cleaning/tables.py` | Core table detection, extraction, LLM formatting, and pipeline step |
-| `src/nec_rag/cleaning/clean.py` | Pipeline orchestrator that calls `tables.run()` as step 2 |
+| `src/nec_rag/data_preprocessing/tables/tables.py` | Core table detection, extraction, LLM formatting, and pipeline step |
+| `src/nec_rag/data_preprocessing/text_cleaning/clean.py` | Pipeline orchestrator that calls `tables.run()` as step 2 |
 
 ### Scripts
 
@@ -347,4 +347,4 @@ script) rather than from a `table_<ID>.json` file.
 | File | Description |
 |------|-------------|
 | `docs/table_ambiguity.md` | Analysis of procedural formatting ambiguity (motivates LLM approach) |
-| `src/nec_rag/cleaning/README.md` | Overview of the full cleaning pipeline |
+| `src/nec_rag/data_preprocessing/text_cleaning/README.md` | Overview of the full cleaning pipeline |
