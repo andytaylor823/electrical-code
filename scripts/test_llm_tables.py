@@ -29,7 +29,8 @@ load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT / "src"))
 
 # pylint: disable=wrong-import-position
-from nec_rag.data_preprocessing.tables import tables  # noqa: E402
+from nec_rag.data_preprocessing.tables.classifiers import get_table_id  # noqa: E402
+from nec_rag.data_preprocessing.tables.detection import extract_table_content, find_table_end, find_table_starts  # noqa: E402
 from nec_rag.data_preprocessing.text_cleaning import remove_junk_pages  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s  %(message)s")
@@ -184,18 +185,18 @@ def load_and_detect() -> tuple[dict[str, dict], list[dict]]:
     logger.info("After remove_junk_pages: %d paragraphs", len(paragraphs))
 
     # Detect all table start positions
-    table_starts = tables.find_table_starts(paragraphs)
+    table_starts = find_table_starts(paragraphs)
     logger.info("Detected %d table starts", len(table_starts))
 
     # Build region info for each table
     regions: list[dict] = []
     for idx, start in enumerate(table_starts):
         next_start = table_starts[idx + 1] if idx + 1 < len(table_starts) else None
-        end = tables.find_table_end(paragraphs, start, next_start)
-        parts = tables.extract_table_content(paragraphs, start, end)
+        end = find_table_end(paragraphs, start, next_start)
+        parts = extract_table_content(paragraphs, start, end)
         regions.append(
             {
-                "table_id": tables.get_table_id(parts[0]) if parts else "unknown",
+                "table_id": get_table_id(parts[0]) if parts else "unknown",
                 "title": parts[0] if parts else "",
                 "parts": parts,
             }

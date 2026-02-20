@@ -21,7 +21,7 @@ import json
 import logging
 from pathlib import Path
 
-from nec_rag.data_preprocessing.tables import tables
+from nec_rag.data_preprocessing.tables import pipeline as tables
 from nec_rag.data_preprocessing.text_cleaning import hyphens_endline, remove_junk_pages, remove_page_furniture, sentence_runover
 
 # Configure logging

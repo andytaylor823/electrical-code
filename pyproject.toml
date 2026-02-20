@@ -21,12 +21,17 @@ dependencies = [
     "chromadb",
     "sentence-transformers>=2.7.0",
     "torch",
+    "langchain>=1.0",
+    "langchain-core>=1.0",
+    "langchain-openai>=1.0",
+    "langgraph>=1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "ipykernel",
     "pylint",
+    "pylint-pydantic",
     "pytest",
 ]
 
@@ -57,6 +62,7 @@ profile = "black"
 
 [tool.pylint.main]
 ignore-paths = ["tests/"]
+load-plugins = ["pylint_pydantic"]
 
 [tool.pylint.FORMAT]
 ignore-long-lines = "^\\s*(# )?.*['\"]?<?https?://\\S+>?"
@@ -80,6 +86,10 @@ include-naming-hint = "yes"
 
 [tool.pylint.TYPECHECK]
 ignore-none = "yes"
+ignored-modules = ["torch", "sentence_transformers"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: slow integration tests that make real LLM calls (run with: pytest tests_integration/)",
+]
