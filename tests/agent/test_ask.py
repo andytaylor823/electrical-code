@@ -1,12 +1,12 @@
-"""Unit tests for the RAG ask module.
+"""Unit tests for the agent tools module.
 
-Only build_context() is testable without mocking -- all other functions
+Only _build_context() is testable without mocking -- all other functions
 require Azure OpenAI, ChromaDB, or embedding model access.
 """
 
 # pylint: disable=missing-class-docstring,missing-function-docstring
 
-from nec_rag.rag.ask import build_context
+from nec_rag.agent.utils import _build_context as build_context
 
 
 class TestBuildContext:

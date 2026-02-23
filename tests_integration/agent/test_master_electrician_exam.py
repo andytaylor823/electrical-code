@@ -239,8 +239,7 @@ EXAM_CASES = [
     (
         "q14",
         (
-            "As a general rule regarding solar photovoltaic (PV) systems, supply-side conductor connections for "
-            "PV systems must terminate in an overcurrent protection device that is within no more than what "
+            "As a general rule regarding solar photovoltaic (PV) systems, supply-side conductor connections for PV systems must terminate in an overcurrent protection device that is within no more than what "
             "distance of the service disconnecting means?"
         ),
         "10 feet, per Section 705.31.",

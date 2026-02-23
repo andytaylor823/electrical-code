@@ -15,6 +15,7 @@ AGENTS.md
 
 # Jupyter
 dev.ipynb
+notebooks/
 
 # Python
 *__pycache__*
