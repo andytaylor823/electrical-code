@@ -120,11 +120,21 @@ def main():
             total_tokens,
         )
 
-        # Print the final response (last AI message)
+        # Extract reasoning token count from the final AI message metadata
         final_message = result["messages"][-1]
+        reasoning_tokens = 0
+        token_usage = getattr(final_message, "response_metadata", {}).get("token_usage", {})
+        completion_details = token_usage.get("completion_tokens_details", {})
+        if isinstance(completion_details, dict):
+            reasoning_tokens = completion_details.get("reasoning_tokens", 0) or 0
+        elif hasattr(completion_details, "reasoning_tokens"):
+            reasoning_tokens = completion_details.reasoning_tokens or 0
+
+        # Print the final response
         print()
         print(final_message.content)
-        print(f"\n[Tokens: {total_tokens:,} ({total_prompt:,} prompt + {total_completion:,} completion) | LLM calls: {cb.successful_requests}]")
+        reasoning_note = f" | reasoning: {reasoning_tokens:,}" if reasoning_tokens else ""
+        print(f"\n[Tokens: {total_tokens:,} ({total_prompt:,} prompt + {total_completion:,} completion){reasoning_note} | LLM calls: {cb.successful_requests}]")
         print()
 
 

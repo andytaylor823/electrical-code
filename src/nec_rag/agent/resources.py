@@ -125,8 +125,17 @@ def load_table_index() -> dict[str, dict]:
 # ---------------------------------------------------------------------------
 
 
-def get_agent_llm() -> AzureChatOpenAI:
-    """Return the cached AzureChatOpenAI instance used as the agent's reasoning model."""
+def get_agent_llm(reasoning_effort: str = "medium") -> AzureChatOpenAI:
+    """Return the cached AzureChatOpenAI instance used as the agent's reasoning model.
+
+    Args:
+        reasoning_effort: Controls how much internal chain-of-thought the model
+            generates before answering.  Valid values for GPT-5-mini:
+            ``"minimal"``, ``"low"``, ``"medium"``, ``"high"``.
+            LangChain defaults to ``None`` which omits the parameter entirely,
+            leaving behaviour model-version-dependent — we explicitly set
+            ``"medium"`` so reasoning is guaranteed regardless of server defaults.
+    """
     if _CACHE["agent_llm"] is None:
         deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.2-chat")
         _CACHE["agent_llm"] = AzureChatOpenAI(
@@ -134,8 +143,9 @@ def get_agent_llm() -> AzureChatOpenAI:
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             azure_deployment=deployment,
             api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
+            reasoning_effort=reasoning_effort,
         )
-        logger.info("Agent LLM initialised: %s", deployment)
+        logger.info("Agent LLM initialised: %s (reasoning_effort=%s)", deployment, reasoning_effort)
     return _CACHE["agent_llm"]
 
 
