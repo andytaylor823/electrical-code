@@ -42,25 +42,44 @@ One 20-question exam is a narrow signal. More diverse tests will reveal systemat
 The agent currently retrieves 20 subsections per query. Need to understand how much of the
 context window is actually being used and whether there's room to pack in more useful content.
 
-### 3a. Measure current context utilization
-- [ ] Instrument `_build_context()` to log token counts (total context tokens vs. model limit)
-- [ ] Sample a representative set of queries and record context size distribution
-- [ ] Determine how close to the model's context limit the agent typically gets
+### 3a. Measure current context utilization ✅
+- [x] Instrument `_build_context()` to log token counts (total context tokens vs. model limit)
+- [x] Sample a representative set of queries and record context size distribution
+- [x] Determine how close to the model's context limit the agent typically gets
 
-### 3b. Evaluate retrieval quantity
-- [ ] Experiment with increasing `n_results` (e.g. 25, 30) and measure impact on answer quality
-- [ ] Check whether additional documents improve recall or just add noise
-- [ ] Profile latency impact of larger retrievals
+See `docs/retrieval_recall_analysis.md` and `scripts/retrieval_recall.py`. Token tracking was
+added to the agent via `langchain_community.callbacks.get_openai_callback` (for LangChain LLM
+calls) and a manual accumulator for standalone vision API calls. **Conclusion:** a typical
+single-search query uses ~6k tokens (~1.5% of GPT-5-mini's 400k context window). The agent
+has massive headroom. However, retry spirals can blow up: one failed question consumed 211k
+prompt tokens (53% of the context window) across 6 repeated `rag_search` calls due to the
+cumulative ReAct message history. A max-3-searches-per-question guardrail was added to the
+system prompt to prevent this.
 
-### 3c. Hydrate context beyond tables
-Currently, referenced *tables* are appended to context. The same idea could apply to
-cross-referenced *subsections* (e.g. when 250.122 says "see 250.120" the agent should have
-both sections available).
+### 3b. Evaluate retrieval quantity ✅
+- [x] Experiment with increasing `n_results` (e.g. 25, 30) and measure impact on answer quality
+- [x] Check whether additional documents improve recall or just add noise
+- [x] Profile latency impact of larger retrievals
 
-- [ ] Parse section cross-references from retrieved chunks (regex for "Section X.Y", "see X.Y")
-- [ ] Look up and append the full text of referenced subsections (avoid duplicates)
-- [ ] Measure token budget impact — how many extra tokens does hydration typically add?
-- [ ] Evaluate whether this improves answer quality on cross-reference-heavy questions
+See `docs/retrieval_recall_analysis.md` and `scripts/retrieval_recall.py`. Ran retrieval at
+n=5, 10, 20, 30, 50 against all 20 exam questions with ground-truth section matching.
+**Conclusion:** top-20 is the right default (79% recall). 12 of 17 matched questions have the
+answer in the top 5 — retrieval is strongly front-loaded. Going to top-50 only adds 2 more
+questions (ranks 24 and 31). Reducing to top-10 loses 2 questions. The agent's failures are
+retrieval misses (wrong sections retrieved), not reasoning failures from too much context.
+
+### 3c. Hydrate context beyond tables ✅
+Addressed differently than originally planned. Instead of automatically injecting
+cross-referenced subsections into the RAG context, we added tools that let the agent fetch
+additional context on demand:
+
+- [x] `nec_lookup` — fetch exact subsection text or table content by section/table ID
+- [x] `browse_nec_structure` — navigate the NEC hierarchy (chapter → article → part →
+      subsection) to discover what exists before doing a targeted lookup
+
+This is more flexible than static cross-reference hydration: the agent decides what additional
+context it needs based on the question, rather than us guessing at retrieval time. It also
+avoids bloating every query's context with potentially irrelevant cross-referenced sections.
 
 ### 3d. Evaluate a re-ranker
 A re-ranker (e.g. a cross-encoder like `cross-encoder/ms-marco-MiniLM-L-6-v2`) scores each
