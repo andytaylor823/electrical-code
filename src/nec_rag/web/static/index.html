@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEC Code Expert</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+</head>
+<body>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-card">
+            <div class="login-icon">⚡</div>
+            <h1>NEC Code Expert</h1>
+            <p class="login-subtitle">NFPA 70 National Electrical Code — 2023 Edition</p>
+            <form id="login-form" onsubmit="return false">
+                <input
+                    type="password"
+                    id="password-input"
+                    placeholder="Enter password"
+                    autocomplete="current-password"
+                    autofocus
+                >
+                <button type="button" id="login-btn">Log in</button>
+                <p id="login-error" class="login-error"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Chat Screen -->
+    <div id="chat-screen" class="chat-screen hidden">
+        <!-- Header -->
+        <header class="chat-header">
+            <div class="header-left">
+                <span class="header-icon">⚡</span>
+                <h1>NEC Code Expert</h1>
+            </div>
+            <button id="new-chat-btn" class="new-chat-btn" title="Start a new conversation">
+                + New Chat
+            </button>
+        </header>
+
+        <!-- Messages Area -->
+        <main id="messages" class="messages">
+            <div class="welcome-message">
+                <div class="welcome-icon">⚡</div>
+                <h2>NEC Code Expert</h2>
+                <p>Ask me anything about the NFPA 70 National Electrical Code, 2023 Edition.
+                   I can search specific sections, look up tables, and analyze images of
+                   electrical installations.</p>
+            </div>
+        </main>
+
+        <!-- Input Area -->
+        <footer class="input-area">
+            <!-- Image preview strip (shown when images are attached) -->
+            <div id="image-previews" class="image-previews"></div>
+
+            <div class="input-row">
+                <label class="attach-btn" title="Attach image">
+                    <input
+                        type="file"
+                        id="image-input"
+                        accept=".png,.jpg,.jpeg,.gif,.webp"
+                        multiple
+                        hidden
+                    >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                </label>
+                <textarea
+                    id="message-input"
+                    placeholder="Ask about the NEC..."
+                    rows="1"
+                    autofocus
+                ></textarea>
+                <button id="send-btn" class="send-btn" title="Send message" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"/>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                </button>
+            </div>
+            <p class="input-hint">Cite specific NEC sections (e.g. "250.50") or ask broad questions. Images supported.</p>
+        </footer>
+    </div>
+
+    <script src="/static/chat.js"></script>
+</body>
+</html>

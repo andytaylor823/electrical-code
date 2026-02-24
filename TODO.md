@@ -109,17 +109,45 @@ ordering should be logical rather than arbitrary retrieval-rank order.
 
 ---
 
-## 5. Build a Frontend
+## 5. Build a Frontend ✅ (scaffolded)
 
 Move beyond the CLI to a web interface. Must be **zero-cost** — no paid hosting or services.
 
-- [ ] Use a free framework: Gradio or Streamlit (simplest), or FastAPI + a lightweight
-      static frontend (more control). All run locally or on free-tier hosting.
-- [ ] Expose the agent as an API endpoint (POST `/ask` with question text + optional image)
-- [ ] Build a chat-style UI with message history
-- [ ] Display NEC citations with section IDs, page numbers, and collapsible source text
-- [ ] Support image upload for the `explain_image` tool
-- [ ] Add a "sources" panel showing which chunks were retrieved and their relevance scores
+- [x] Use FastAPI + a lightweight vanilla HTML/CSS/JS static frontend
+- [x] Expose the agent via `POST /api/chat` (text + optional images)
+- [x] Build a ChatGPT-style chat UI with multi-turn message history
+- [x] Support image upload (drag-and-drop / click-to-attach) for the `explain_image` tool
+- [x] Simple password auth (configured via `NEC_APP_PASSWORD` in `.env`)
+- [x] Markdown rendering in assistant messages (NEC citations with code blocks, tables, etc.)
+- [ ] Streaming responses (SSE) for token-by-token output
+- [ ] Display a "sources" panel showing which chunks were retrieved and their relevance scores
+- [ ] Collapsible source text for NEC citations
+
+### Running the web app
+
+```bash
+# Activate venv and start the server
+source .venv/bin/activate
+python -m nec_rag.web.app
+# => Uvicorn running on http://localhost:8000
+
+# Or equivalently:
+python -m nec_rag.web
+```
+
+### Sharing with Adam via tunnel
+
+```bash
+# Install ngrok (one-time)
+brew install ngrok
+
+# In a separate terminal, expose localhost:8000
+ngrok http 8000
+# => Gives Adam a URL like https://abc123.ngrok-free.app
+
+# Adam opens the URL, enters the shared NEC_APP_PASSWORD, and chats.
+# Your machine must be running for this to work.
+```
 
 ---
 
@@ -128,9 +156,9 @@ Move beyond the CLI to a web interface. Must be **zero-cost** — no paid hostin
 Let Adam try the agent without using your laptop, while keeping costs at zero (or near-zero).
 
 ### 6a. Free deployment options
-- [ ] **Option A — Tunnel from your machine:** Run the app locally and expose via a free
-      tunnel (ngrok free tier, Cloudflare Tunnel, or `ssh -R`). Zero hosting cost; only
-      runs when your machine is on.
+- [x] **Option A — Tunnel from your machine:** Run the app locally and expose via ngrok
+      or Cloudflare Tunnel (`ngrok http 8000`). Zero hosting cost; only runs when your
+      machine is on. See section 5 for instructions.
 - [ ] **Option B — Free-tier cloud:** Gradio apps can be shared via HuggingFace Spaces
       (free tier). Streamlit has Streamlit Community Cloud (free). Both require the app
       to call your existing Azure OpenAI endpoint for LLM/embedding — no new services.
@@ -141,9 +169,10 @@ Let Adam try the agent without using your laptop, while keeping costs at zero (o
 - [ ] Add per-user rate limiting in the app itself (e.g. X queries per hour, Y per day)
 - [ ] Set a hard monthly spending cap on the Azure OpenAI resource via Azure Portal
       budgets & alerts (this is free to configure)
-- [ ] Log every LLM call with token counts and estimated cost
+- [x] Log every LLM call with token counts and estimated cost (token counts logged per
+      request and shown in the chat UI)
 - [ ] Consider a simple "query budget": each user gets N queries per day, resets at midnight
 
 ### 6c. Simple auth
-- [ ] Add a shared password or basic API key to gate access (no paid auth service)
+- [x] Add a shared password to gate access (configured via `NEC_APP_PASSWORD` in `.env`)
 - [ ] Log who asked what and when, so you can audit usage
