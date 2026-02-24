@@ -286,9 +286,7 @@ EXAM_CASES = [
     (
         "q17",
         (
-            "When building a temporary service at a construction site, which of the following receptacles must be "
-            "GFCI protected: (I) 125-volt, 15- and 20-ampere receptacles, (II) 250-volt, 20- and 30-ampere "
-            "receptacles, or both?"
+            "When building a temporary service at a construction site, which of the following receptacles must be GFCI protected: (I) 125-volt, 15- and 20-ampere receptacles, (II) 250-volt, 20- and 30-ampere receptacles, or both?"
         ),
         "Both. All 125-volt 15- and 20-ampere receptacles (Section 590.6(A)(1)) and 250-volt receptacles (Section 590.6(B)) require GFCI protection.",
     ),

@@ -54,21 +54,42 @@ def get_vision_usage() -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
-@tool(parse_docstring=True)
-def rag_search(query: str, num_results: int = 20) -> str:
-    """Search the National Electrical Code (NEC) 2023 for sections relevant to a query.
+_RAG_SEARCH_NUM_RESULTS = 20  # number of subsections to retrieve per search
 
-    Embeds the query and retrieves the most relevant NEC subsections from the
-    vector database. Returns formatted context with section IDs, article numbers,
-    and page references.
+
+@tool(parse_docstring=True)
+def rag_search(user_request: str) -> str:
+    """Search the NEC 2023 vector database for sections relevant to a natural-language request.
+
+    Embeds the request and retrieves the most relevant NEC subsections from the
+    vector database via cosine-similarity. Returns formatted context with section
+    IDs, article numbers, and page references. This is the broadest search tool
+    available -- it casts a wide net across the entire code.
+
+    USE WHEN: The user asks a general question about electrical systems,
+    installations, or code requirements and does not cite a specific NEC section
+    or table. This should be the primary starting tool for discovering which parts
+    of the NEC are relevant to a question.
+
+    DO NOT USE WHEN: The user requests information about a particular, known
+    section or table of the NEC (e.g. "What does 250.50 say?"). Use nec_lookup
+    for those cases instead.
 
     Args:
-        query: The user's search query describing what NEC content to find.
-        num_results: Number of subsections to retrieve (default 20).
+        user_request: A natural-language description of what NEC content to find.
+            This is a semantic vector search, NOT a keyword search -- write the
+            request as a complete, natural sentence or question (e.g. "What are the
+            grounding requirements for a residential service entrance?"). Do NOT
+            reduce it to keyword fragments or use quotation marks around terms.
+            Natural language produces significantly better retrieval results than
+            keyword amalgamations.
+
+    Returns:
+        str: Formatted context blocks, each containing the subsection ID, article number, page reference, and full text of the retrieved subsections.
     """
     embed_fn, collection = load_embedding_resources()
-    logger.info("rag_search: query=%s  num_results=%d", query, num_results)
-    retrieved = _retrieve(query, embed_fn, collection, n_results=num_results)
+    logger.info("rag_search: user_request=%s  num_results=%d", user_request, _RAG_SEARCH_NUM_RESULTS)
+    retrieved = _retrieve(user_request, embed_fn, collection, n_results=_RAG_SEARCH_NUM_RESULTS)
     context = _build_context(retrieved)
     logger.info("rag_search: retrieved %d subsections", len(retrieved))
     return context
@@ -84,13 +105,22 @@ def explain_image(file_path: str, user_question: str = "") -> str:
     """Analyze an image related to electrical wiring, installations, or the NEC.
 
     Reads an image from disk and sends it to a vision-capable LLM for a detailed
-    description. The image is NOT loaded into the agent's context -- only the
-    returned text summary is.
+    text description. The image itself is NOT loaded into the agent's context --
+    only the returned text summary is. Supported formats: PNG, JPG, JPEG, GIF, WEBP.
+
+    USE WHEN: The user attaches or references an image file in their request
+    (e.g. a photo of a panel, wiring diagram, or NEC figure).
+
+    DO NOT USE WHEN: The user has not attached or referenced any image file.
+    This tool requires an image on disk and will error without one.
 
     Args:
         file_path: Absolute or relative path to the image file on disk.
         user_question: Optional context about what the user is asking, so the
             vision model can focus its analysis.
+
+    Returns:
+        str: A detailed text description of the image produced by the vision LLM.
     """
     path = Path(file_path).expanduser().resolve()
     if not path.exists():
@@ -150,61 +180,89 @@ def explain_image(file_path: str, user_question: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 
+_NEC_LOOKUP_MAX_IDS = 10  # combined cap on section_ids + table_ids per call
+
+
 @tool(parse_docstring=True)
-def nec_lookup(section_id: str = "", table_id: str = "") -> str:
+def nec_lookup(section_ids: list[str] | None = None, table_ids: list[str] | None = None) -> str:
     """Fetch exact NEC subsection text or table content by ID.
 
-    Use this when you already know the specific section or table you need
-    (e.g. from a prior rag_search result or a user-cited reference). This is
-    cheaper and more precise than rag_search -- prefer it for known references.
+    Retrieves the full verbatim text of one or more NEC subsections and/or
+    tables by their identifiers. Multiple IDs may be provided in a single call
+    (up to 10 total across both lists). This is the most precise and
+    context-cheap retrieval tool -- it returns only the requested items with no
+    extra results. At least one ID must be provided across section_ids and
+    table_ids.
 
-    At least one of section_id or table_id must be provided. Both may be
-    provided in a single call to retrieve a section and a table together.
+    USE WHEN: You already know the specific section or table ID(s) you need --
+    for example, from a prior rag_search hit, a browse_nec_structure outline, or
+    because the user cited particular references (e.g. "What does 250.50 say?").
+    Prefer this over rag_search whenever the targets are already known. You may
+    batch up to 10 IDs in a single call to reduce round-trips.
+
+    DO NOT USE WHEN: You do not yet know which section is relevant. Because this
+    tool requires exact IDs, it should NOT be the first tool called unless the
+    user explicitly asks about specific sections or tables. Use rag_search or
+    browse_nec_structure first to identify candidate sections, then follow up
+    with nec_lookup for the precise text.
 
     Args:
-        section_id: NEC section number, e.g. "250.50" or "90.1".
-        table_id: Table identifier, e.g. "Table 220.55" or "Table220.55".
-    """
-    section_id = section_id.strip()
-    table_id = table_id.strip()
+        section_ids: List of NEC section numbers, e.g. ["250.50", "90.1"]. Max 10 total IDs across both lists.
+        table_ids: List of table identifiers, e.g. ["Table 220.55", "Table310.16"]. Max 10 total IDs across both lists.
 
-    if not section_id and not table_id:
-        return "Error: at least one of section_id or table_id must be provided. " 'Example: nec_lookup(section_id="250.50") or nec_lookup(table_id="Table 220.55")'
+    Returns:
+        str: The full text of each requested subsection and/or markdown-formatted table,
+            separated by blank lines. If an ID is not found, that entry contains an error
+            message with suggested similar IDs.
+    """
+    section_ids = [s.strip() for s in (section_ids or []) if s.strip()]
+    table_ids = [t.strip() for t in (table_ids or []) if t.strip()]
+
+    if not section_ids and not table_ids:
+        return "Error: at least one of section_ids or table_ids must be provided. " 'Example: nec_lookup(section_ids=["250.50"]) or nec_lookup(table_ids=["Table 220.55"])'
+
+    # Enforce combined limit
+    total_requested = len(section_ids) + len(table_ids)
+    if total_requested > _NEC_LOOKUP_MAX_IDS:
+        return (
+            f"Error: requested {total_requested} IDs ({len(section_ids)} sections + {len(table_ids)} tables) "
+            f"but the maximum is {_NEC_LOOKUP_MAX_IDS} total per call. Split the request into multiple calls."
+        )
 
     output_parts: list[str] = []
 
-    # --- Section lookup ---
-    if section_id:
+    # --- Section lookups ---
+    if section_ids:
         section_index = load_section_index()
-        subsection = section_index.get(section_id)
+        for sid in section_ids:
+            subsection = section_index.get(sid)
+            if subsection is None:
+                valid_ids = sorted(section_index.keys())
+                suggestions = suggest_similar_ids(sid, valid_ids)
+                hint = ", ".join(suggestions) if suggestions else "(no similar IDs found)"
+                output_parts.append(f"Error: section '{sid}' not found. Similar section IDs: {hint}")
+                logger.warning("nec_lookup: section '%s' not found", sid)
+            else:
+                header = f"[Section {sid}, Article {subsection['article_num']}, page {subsection['page']}]"
+                text = _build_subsection_text(subsection)
+                output_parts.append(f"{header}\n{text}")
+                logger.info("nec_lookup: resolved section '%s' (%d chars)", sid, len(text))
 
-        if subsection is None:
-            valid_ids = sorted(section_index.keys())
-            suggestions = suggest_similar_ids(section_id, valid_ids)
-            hint = ", ".join(suggestions) if suggestions else "(no similar IDs found)"
-            output_parts.append(f"Error: section '{section_id}' not found. Similar section IDs: {hint}")
-            logger.warning("nec_lookup: section '%s' not found", section_id)
-        else:
-            header = f"[Section {section_id}, Article {subsection['article_num']}, page {subsection['page']}]"
-            text = _build_subsection_text(subsection)
-            output_parts.append(f"{header}\n{text}")
-            logger.info("nec_lookup: resolved section '%s' (%d chars)", section_id, len(text))
-
-    # --- Table lookup ---
-    if table_id:
-        normalised = normalize_table_id(table_id)
+    # --- Table lookups ---
+    if table_ids:
         table_index = load_table_index()
-        table = table_index.get(normalised)
-
-        if table is None:
-            valid_ids = sorted(table_index.keys())
-            suggestions = suggest_similar_ids(normalised, valid_ids)
-            hint = ", ".join(suggestions) if suggestions else "(no similar IDs found)"
-            output_parts.append(f"Error: table '{table_id}' (normalised: '{normalised}') not found. Similar table IDs: {hint}")
-            logger.warning("nec_lookup: table '%s' (normalised '%s') not found", table_id, normalised)
-        else:
-            output_parts.append(_format_table_as_markdown(table))
-            logger.info("nec_lookup: resolved table '%s'", normalised)
+        for tid in table_ids:
+            normalised = normalize_table_id(tid)
+            table = table_index.get(normalised)
+            if table is None:
+                valid_ids = sorted(table_index.keys())
+                suggestions = suggest_similar_ids(normalised, valid_ids)
+                hint = ", ".join(suggestions) if suggestions else "(no similar IDs found)"
+                output_parts.append(f"Error: table '{tid}' (normalised: '{normalised}') not found. Similar table IDs: {hint}")
+                logger.warning("nec_lookup: table '%s' (normalised '%s') not found", tid, normalised)
+            else:
+                output_parts.append(_format_table_as_markdown(table))
+                logger.info("nec_lookup: resolved table '%s'", normalised)
 
     return "\n\n".join(output_parts)
 
@@ -216,17 +274,31 @@ def nec_lookup(section_id: str = "", table_id: str = "") -> str:
 
 @tool(parse_docstring=True)
 def browse_nec_structure(chapter: int | None = None, article: int | None = None, part: int | None = None) -> str:
-    """Browse the structure of the NEC to discover what sections exist.
+    """Browse the hierarchical structure of the NEC to discover what sections exist.
 
     Returns a plain-text outline of chapters, articles, parts, or subsections
-    depending on the specificity of the arguments. Use this as a coarse-grained
-    discovery tool before doing a fine-grained rag_search. When an article is
-    specified, the full text of the Scope subsection (XXX.1) is always included.
+    depending on the specificity of the arguments. This is a lightweight,
+    context-inexpensive way to explore the NEC hierarchy and narrow down where
+    relevant content lives before committing to a full-text retrieval. When an
+    article is specified, the full text of the Scope subsection (XXX.1) is
+    always included so you can gauge relevance.
+
+    USE WHEN: You have a general idea of the relevant chapter or article but not
+    the exact subsection. This is an excellent mid-level navigation tool --
+    coarser than nec_lookup but more targeted than rag_search. There is rarely
+    a bad time to use this tool; it provides a cheap overview of what content
+    exists in any part of the NEC.
+
+    DO NOT USE WHEN: There is no specific scenario where this tool should be
+    avoided. It is safe to call at any point in the search process.
 
     Args:
         chapter: Chapter number (1-8). Returns articles in that chapter.
         article: Article number (e.g. 705). Returns parts and subsections in that article.
         part: Part number within an article (e.g. 1). Requires article to also be set.
+
+    Returns:
+        str: A plain-text outline of chapters, articles, parts, or subsections depending on the specificity of the arguments.
     """
     data = load_structured_json()
     chapters = data["chapters"]  # pylint: disable=unsubscriptable-object

@@ -67,6 +67,7 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     agent = build_nec_agent(embedding_model_key=args.model)
     logger.info("Agent ready. Type your question or 'x' to quit.")

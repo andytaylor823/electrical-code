@@ -15,36 +15,36 @@ from nec_rag.agent.tools import browse_nec_structure, nec_lookup
 
 
 class TestSectionLookup:
-    """Test nec_lookup when called with section_id only."""
+    """Test nec_lookup when called with section_ids only."""
 
     def test_known_section_returns_header_and_content(self):
         """Section 90.1 (Scope) should return a header and front-matter text."""
-        result = nec_lookup.invoke({"section_id": "90.1"})
+        result = nec_lookup.invoke({"section_ids": ["90.1"]})
         assert "[Section 90.1, Article 90, page 26]" in result
         assert "Scope" in result
 
     def test_section_content_matches_expected_text(self):
         """Section 250.50 (page 148) should contain grounding electrode language."""
-        result = nec_lookup.invoke({"section_id": "250.50"})
+        result = nec_lookup.invoke({"section_ids": ["250.50"]})
         assert "[Section 250.50, Article 250, page 148]" in result
         assert "grounding electrode" in result.lower()
 
     def test_section_with_sub_items_includes_all(self):
         """Section 250.52 has sub-items (A), (1), (2), etc.  All should appear."""
-        result = nec_lookup.invoke({"section_id": "250.52"})
+        result = nec_lookup.invoke({"section_ids": ["250.52"]})
         assert "(A)" in result
         assert "Metal Underground Water Pipe" in result
         assert "Metal In-ground Support Structure" in result
 
     def test_invalid_section_returns_error_with_suggestions(self):
         """A bogus section ID should produce an error and similar-ID suggestions."""
-        result = nec_lookup.invoke({"section_id": "999.99"})
+        result = nec_lookup.invoke({"section_ids": ["999.99"]})
         assert "Error" in result
         assert "not found" in result
 
     def test_close_typo_section_returns_suggestions(self):
         """A near-miss like '250.5' (instead of 250.50) should suggest real IDs."""
-        result = nec_lookup.invoke({"section_id": "250.5"})
+        result = nec_lookup.invoke({"section_ids": ["250.5"]})
         assert "Error" in result
         assert "Similar section IDs" in result
         assert "250.50" in result or "250.52" in result
@@ -52,10 +52,16 @@ class TestSectionLookup:
     def test_section_110_26_clearances(self):
         """Section 110.26 (Spaces About Electrical Equipment) is a frequently
         referenced section -- verify it returns substantive content."""
-        result = nec_lookup.invoke({"section_id": "110.26"})
+        result = nec_lookup.invoke({"section_ids": ["110.26"]})
         assert "110.26" in result
         assert "Article 110" in result
         assert len(result) > 100
+
+    def test_multiple_sections_in_single_call(self):
+        """Requesting multiple section IDs should return content for all of them."""
+        result = nec_lookup.invoke({"section_ids": ["90.1", "250.50"]})
+        assert "[Section 90.1" in result
+        assert "[Section 250.50" in result
 
 
 # ===========================================================================
@@ -64,11 +70,11 @@ class TestSectionLookup:
 
 
 class TestTableLookup:
-    """Test nec_lookup when called with table_id only."""
+    """Test nec_lookup when called with table_ids only."""
 
     def test_known_table_returns_markdown(self):
         """Table 310.16 (Ampacities) should come back as a markdown table."""
-        result = nec_lookup.invoke({"table_id": "Table 310.16"})
+        result = nec_lookup.invoke({"table_ids": ["Table 310.16"]})
         assert "Table 310.16" in result
         assert "Ampacities" in result
         assert "| " in result
@@ -76,42 +82,48 @@ class TestTableLookup:
 
     def test_table_has_data_rows(self):
         """Table 310.16 should contain recognisable conductor sizes."""
-        result = nec_lookup.invoke({"table_id": "Table 310.16"})
+        result = nec_lookup.invoke({"table_ids": ["Table 310.16"]})
         assert "14" in result or "12" in result
 
     def test_table_with_footnotes(self):
         """Table 220.55 has footnotes -- they should appear as blockquotes."""
-        result = nec_lookup.invoke({"table_id": "Table 220.55"})
+        result = nec_lookup.invoke({"table_ids": ["Table 220.55"]})
         assert "> " in result
 
     def test_table_id_normalisation_spaces(self):
         """'Table 220.55' and 'Table220.55' should resolve to the same table."""
-        with_space = nec_lookup.invoke({"table_id": "Table 220.55"})
-        without_space = nec_lookup.invoke({"table_id": "Table220.55"})
+        with_space = nec_lookup.invoke({"table_ids": ["Table 220.55"]})
+        without_space = nec_lookup.invoke({"table_ids": ["Table220.55"]})
         assert with_space == without_space
 
     def test_table_id_normalisation_case(self):
         """Case-insensitive inputs like 'table 310.16' should still resolve."""
-        result = nec_lookup.invoke({"table_id": "table 310.16"})
+        result = nec_lookup.invoke({"table_ids": ["table 310.16"]})
         assert "Table 310.16" in result
         assert "| " in result
 
     def test_table_id_normalisation_extra_spaces(self):
         """Extra whitespace like 'TABLE  220.55' should still resolve."""
-        result = nec_lookup.invoke({"table_id": "TABLE  220.55"})
+        result = nec_lookup.invoke({"table_ids": ["TABLE  220.55"]})
         assert "Table 220.55" in result
 
     def test_invalid_table_returns_error_with_suggestions(self):
         """A bogus table ID should produce an error and similar-ID suggestions."""
-        result = nec_lookup.invoke({"table_id": "Table 999.99"})
+        result = nec_lookup.invoke({"table_ids": ["Table 999.99"]})
         assert "Error" in result
         assert "not found" in result
 
     def test_parenthetical_table_id(self):
         """Parenthetical table IDs like 'Table 110.26(A)(1)' should resolve."""
-        result = nec_lookup.invoke({"table_id": "Table 110.26(A)(1)"})
+        result = nec_lookup.invoke({"table_ids": ["Table 110.26(A)(1)"]})
         assert "110.26" in result
         assert "| " in result
+
+    def test_multiple_tables_in_single_call(self):
+        """Requesting multiple table IDs should return content for all of them."""
+        result = nec_lookup.invoke({"table_ids": ["Table 310.16", "Table 220.55"]})
+        assert "Table 310.16" in result
+        assert "Table 220.55" in result
 
 
 # ===========================================================================
@@ -120,11 +132,11 @@ class TestTableLookup:
 
 
 class TestCombinedLookup:
-    """Test nec_lookup with both section_id and table_id supplied."""
+    """Test nec_lookup with both section_ids and table_ids supplied."""
 
     def test_both_section_and_table_returns_both(self):
         """Providing both IDs should return section content AND table content."""
-        result = nec_lookup.invoke({"section_id": "250.50", "table_id": "Table 310.16"})
+        result = nec_lookup.invoke({"section_ids": ["250.50"], "table_ids": ["Table 310.16"]})
         assert "Section 250.50" in result
         assert "grounding electrode" in result.lower()
         assert "Table 310.16" in result
@@ -139,20 +151,37 @@ class TestCombinedLookup:
 class TestLookupErrors:
 
     def test_no_args_returns_error(self):
-        """Calling with neither section_id nor table_id should return an error."""
+        """Calling with neither section_ids nor table_ids should return an error."""
         result = nec_lookup.invoke({})
         assert "Error" in result
         assert "at least one" in result
 
-    def test_empty_strings_returns_error(self):
-        """Explicitly empty strings should be treated as missing."""
-        result = nec_lookup.invoke({"section_id": "", "table_id": ""})
+    def test_empty_lists_returns_error(self):
+        """Explicitly empty lists should be treated as missing."""
+        result = nec_lookup.invoke({"section_ids": [], "table_ids": []})
         assert "Error" in result
 
-    def test_whitespace_only_returns_error(self):
-        """Whitespace-only strings should be treated as missing."""
-        result = nec_lookup.invoke({"section_id": "   ", "table_id": "   "})
+    def test_empty_strings_in_lists_returns_error(self):
+        """Lists containing only empty strings should be treated as missing."""
+        result = nec_lookup.invoke({"section_ids": ["", "  "], "table_ids": [""]})
         assert "Error" in result
+
+    def test_exceeding_max_ids_returns_error(self):
+        """Requesting more than 10 total IDs should return an error."""
+        many_sections = [f"250.{i}" for i in range(8)]
+        many_tables = ["Table 310.16", "Table 220.55", "Table 110.26(A)(1)"]
+        result = nec_lookup.invoke({"section_ids": many_sections, "table_ids": many_tables})
+        assert "Error" in result
+        assert "maximum" in result.lower()
+
+    def test_exactly_ten_ids_succeeds(self):
+        """Requesting exactly 10 total IDs should NOT return an error."""
+        sections = ["90.1", "250.50", "250.52", "110.26", "110.14"]
+        tables = ["Table 310.16", "Table 220.55", "Table 110.26(A)(1)", "Table 310.16", "Table 220.55"]
+        result = nec_lookup.invoke({"section_ids": sections, "table_ids": tables})
+        assert "Split the request into multiple calls" not in result
+        assert "[Section 90.1" in result
+        assert "Table 310.16" in result
 
 
 # ===========================================================================

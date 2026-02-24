@@ -30,6 +30,7 @@ from nec_rag.agent.utils import _retrieve  # pylint: disable=wrong-import-positi
 from nec_rag.data_preprocessing.embedding.config import MODELS  # pylint: disable=wrong-import-position
 
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # ---------------------------------------------------------------------------
 # Ground truth: for each exam question, the NEC section/table IDs that
@@ -64,7 +65,7 @@ GROUND_TRUTH = {
 }
 
 # Import exam cases (question text)
-sys.path.insert(0, str(ROOT / "tests_integration"))
+sys.path.insert(0, str(ROOT / "tests_integration" / "agent"))
 from test_master_electrician_exam import EXAM_CASES  # pylint: disable=wrong-import-position,wrong-import-order,import-error
 
 # ---------------------------------------------------------------------------
