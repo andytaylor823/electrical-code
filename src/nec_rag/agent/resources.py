@@ -7,7 +7,6 @@ Handles loading and caching of:
 - Table index (table_id -> table dict from structured JSON)
 """
 
-import json
 import logging
 import os
 
@@ -16,6 +15,7 @@ from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
 from openai import AzureOpenAI
 
+from nec_rag.agent.loaders import load_structured_json
 from nec_rag.data_preprocessing.embedding.config import COLLECTION_NAME, MODELS, ROOT, chroma_path
 
 logger = logging.getLogger(__name__)
@@ -96,8 +96,6 @@ def load_embedding_resources(model_key: str = "azure-large"):
 # Table index (table_id -> table dict from structured JSON)
 # ---------------------------------------------------------------------------
 
-STRUCTURED_JSON_PATH = ROOT / "data" / "prepared" / "NFPA 70 NEC 2023_structured.json"
-
 
 def load_table_index() -> dict[str, dict]:
     """Build a lookup from normalised table ID to its structured dict, caching for reuse.
@@ -108,9 +106,7 @@ def load_table_index() -> dict[str, dict]:
     if _CACHE["table_index"] is not None:
         return _CACHE["table_index"]
 
-    logger.info("Building table index from %s", STRUCTURED_JSON_PATH)
-    with open(STRUCTURED_JSON_PATH, "r", encoding="utf-8") as fopen:
-        data = json.load(fopen)
+    data = load_structured_json()
 
     # Walk the hierarchy and collect every table, keyed by normalised ID
     index: dict[str, dict] = {}
