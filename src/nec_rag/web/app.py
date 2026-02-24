@@ -9,9 +9,11 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,6 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_community.callbacks import get_openai_callback
 from langchain_core.messages import HumanMessage
+from starlette.responses import StreamingResponse
 
 from nec_rag.agent.agent import build_nec_agent
 from nec_rag.agent.tools import IMAGE_EXTENSIONS, get_vision_usage, reset_vision_usage
@@ -54,29 +57,196 @@ _auth_tokens: set[str] = set()  # valid auth cookie tokens
 
 
 # ---------------------------------------------------------------------------
-# Agent invocation helper (runs in thread pool for async compat)
+# Tool-call description mapping (present + past tense for shadow text)
 # ---------------------------------------------------------------------------
 
 
-def _invoke_agent(agent, messages: list) -> tuple[dict, dict]:
-    """Run the agent synchronously and return (result, token_info).
+def _describe_browse(args: dict) -> dict[str, str]:
+    """Build present/past descriptions for browse_nec_structure."""
+    article = args.get("article")
+    if article is not None:
+        return {"present": f"Inspecting Article {article}\u2019s structure", "past": f"Inspected Article {article}\u2019s structure"}
+    chapter = args.get("chapter")
+    if chapter is not None:
+        return {"present": f"Browsing Chapter {chapter}\u2019s articles", "past": f"Browsed Chapter {chapter}\u2019s articles"}
+    return {"present": "Browsing NEC table of contents", "past": "Browsed NEC table of contents"}
 
-    Called via ``asyncio.to_thread`` so the FastAPI event loop is not blocked.
-    Token tracking (LangChain callback + vision usage) is done in the same
-    thread to avoid context-propagation issues.
+
+def _describe_lookup(args: dict) -> dict[str, str]:
+    """Build present/past descriptions for nec_lookup."""
+    section_ids = [s for s in (args.get("section_ids") or []) if s]
+    table_ids = [t for t in (args.get("table_ids") or []) if t]
+    parts: list[str] = []
+    if section_ids:
+        label = "Sections" if len(section_ids) > 1 else "Section"
+        parts.append(f"{label} {', '.join(section_ids[:3])}")
+    if table_ids:
+        label = "Tables" if len(table_ids) > 1 else "Table"
+        parts.append(f"{label} {', '.join(table_ids[:3])}")
+    target = " and ".join(parts) if parts else "requested IDs"
+    return {"present": f"Looking up {target}", "past": f"Looked up {target}"}
+
+
+# Static descriptions for tools that don't depend on arguments
+_STATIC_TOOL_DESCRIPTIONS: dict[str, dict[str, str]] = {
+    "rag_search": {"present": "Searching the NEC\u2026", "past": "Searched the NEC"},
+    "explain_image": {"present": "Analyzing uploaded image\u2026", "past": "Analyzed uploaded image"},
+}
+
+# Tools whose descriptions depend on their arguments
+_DYNAMIC_TOOL_DESCRIBERS: dict[str, callable] = {
+    "browse_nec_structure": _describe_browse,
+    "nec_lookup": _describe_lookup,
+}
+
+
+def _describe_tool_call(tool_name: str, args: dict) -> dict[str, str]:
+    """Return ``{"present": ..., "past": ...}`` descriptions for a tool call."""
+    if tool_name in _STATIC_TOOL_DESCRIPTIONS:
+        return _STATIC_TOOL_DESCRIPTIONS[tool_name]
+    describer = _DYNAMIC_TOOL_DESCRIBERS.get(tool_name)
+    if describer:
+        return describer(args)
+    return {"present": f"Running {tool_name}\u2026", "past": f"Ran {tool_name}"}
+
+
+def _sse_line(payload: dict) -> str:
+    """Format a single SSE ``data:`` line (with trailing double-newline)."""
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+# ---------------------------------------------------------------------------
+# Agent streaming (runs in a background thread, pushes SSE events via queue)
+# ---------------------------------------------------------------------------
+
+
+def _process_agent_node(new_msgs: list, pending_descriptions: dict, put_fn: callable) -> None:
+    """Handle an 'agent' node chunk — emit tool_start events for any tool calls."""
+    for msg in new_msgs:
+        tool_calls = getattr(msg, "tool_calls", None)
+        if not tool_calls:
+            continue
+        for tc in tool_calls:
+            desc = _describe_tool_call(tc["name"], tc["args"])
+            pending_descriptions[tc["id"]] = desc
+            put_fn({"type": "tool_start", "description": desc["present"]})
+
+
+def _process_tools_node(new_msgs: list, pending_descriptions: dict, put_fn: callable) -> None:
+    """Handle a 'tools' node chunk — emit tool_end events, then a thinking event."""
+    for msg in new_msgs:
+        tc_id = getattr(msg, "tool_call_id", None)
+        desc = pending_descriptions.pop(tc_id, None)
+        if desc:
+            put_fn({"type": "tool_end", "description": desc["past"]})
+    # Agent will think again after receiving tool results
+    put_fn({"type": "thinking"})
+
+
+def _stream_agent_thread(
+    agent,
+    messages: list,
+    loop: asyncio.AbstractEventLoop,
+    event_queue: asyncio.Queue,
+    result_holder: dict,
+) -> None:
+    """Run ``agent.stream()`` synchronously and push SSE event strings into *event_queue*.
+
+    *result_holder* is a mutable dict where the accumulated message list is
+    stored under ``"messages"`` so the caller can update the session after the
+    stream completes.
     """
     reset_vision_usage()
-    with get_openai_callback() as cb:
-        result = agent.invoke({"messages": messages})
+    accumulated_messages: list = []
+    pending_descriptions: dict[str, dict[str, str]] = {}  # tool_call_id -> {present, past}
 
-    vision = get_vision_usage()
-    token_info = {
-        "prompt_tokens": cb.prompt_tokens + vision["prompt_tokens"],
-        "completion_tokens": cb.completion_tokens + vision["completion_tokens"],
-        "total_tokens": cb.total_tokens + vision["total_tokens"],
-        "llm_calls": cb.successful_requests,
+    def _put(payload: dict) -> None:
+        loop.call_soon_threadsafe(event_queue.put_nowait, _sse_line(payload))
+
+    # LangGraph's create_agent uses "model" for the LLM node and "tools" for tool execution
+    node_handlers = {
+        "model": lambda msgs: _process_agent_node(msgs, pending_descriptions, _put),
+        "tools": lambda msgs: _process_tools_node(msgs, pending_descriptions, _put),
     }
-    return result, token_info
+
+    try:
+        with get_openai_callback() as cb:
+            for chunk in agent.stream({"messages": messages}, stream_mode="updates"):
+                for node_name, node_output in chunk.items():
+                    new_msgs = node_output.get("messages", [])
+                    accumulated_messages.extend(new_msgs)
+                    handler = node_handlers.get(node_name)
+                    if handler:
+                        handler(new_msgs)
+
+        # Build combined token info (agent LLM + standalone vision calls)
+        vision = get_vision_usage()
+        token_info = {
+            "prompt_tokens": cb.prompt_tokens + vision["prompt_tokens"],
+            "completion_tokens": cb.completion_tokens + vision["completion_tokens"],
+            "total_tokens": cb.total_tokens + vision["total_tokens"],
+            "llm_calls": cb.successful_requests,
+        }
+
+        # The last accumulated message is the final AI response
+        final_content = ""
+        if accumulated_messages:
+            final_content = getattr(accumulated_messages[-1], "content", "") or ""
+        _put({"type": "final", "response": final_content, "token_info": token_info})
+
+        logger.info(
+            "Stream complete — tokens=%d (prompt=%d, completion=%d) | LLM calls=%d",
+            token_info["total_tokens"],
+            token_info["prompt_tokens"],
+            token_info["completion_tokens"],
+            token_info["llm_calls"],
+        )
+
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception("Agent streaming error")
+        _put({"type": "error", "detail": "The agent encountered an error processing your request."})
+
+    # Store accumulated messages for session update by the caller
+    result_holder["messages"] = list(messages) + accumulated_messages
+
+    # Sentinel to signal the async generator that the stream is finished
+    loop.call_soon_threadsafe(event_queue.put_nowait, None)
+
+
+async def _sse_event_generator(agent, messages: list, session_id: str):
+    """Async generator that yields SSE lines from the agent stream.
+
+    Spawns the synchronous ``agent.stream()`` in a background thread and
+    bridges events to the async world via an ``asyncio.Queue``.
+    """
+    loop = asyncio.get_running_loop()
+    event_queue: asyncio.Queue = asyncio.Queue()
+    result_holder: dict = {"messages": None}
+
+    # Yield the initial "Thinking…" status before the thread starts producing
+    yield _sse_line({"type": "thinking"})
+
+    # Start the blocking agent stream in a daemon thread
+    thread = threading.Thread(
+        target=_stream_agent_thread,
+        args=(agent, messages, loop, event_queue, result_holder),
+        daemon=True,
+    )
+    thread.start()
+
+    # Relay SSE events from the queue until the sentinel (None) arrives
+    while True:
+        event = await event_queue.get()
+        if event is None:
+            break
+        yield event
+
+    thread.join(timeout=5)
+
+    # Persist the full conversation history (input + agent messages) into the session
+    if result_holder["messages"] is not None:
+        _sessions[session_id] = result_holder["messages"]
+        logger.info("Session %s updated — %d messages total", session_id, len(result_holder["messages"]))
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +309,7 @@ async def chat(
     message: str = Form(""),
     images: list[UploadFile] = File(default=[]),
 ):
-    """Handle a chat message: save images, invoke the agent, return the response."""
+    """Handle a chat message: save images, stream SSE progress events, then the final response."""
     _check_auth(request)
 
     # Save uploaded images to the temp directory
@@ -170,35 +340,11 @@ async def chat(
     # Append the user message to conversation history
     _sessions[session_id].append(HumanMessage(content=user_text))
 
-    # Invoke the agent with the full conversation history
-    try:
-        result, token_info = await asyncio.to_thread(_invoke_agent, _AGENT, _sessions[session_id])
-    except Exception:
-        logger.exception("Agent error in session %s", session_id)
-        # Roll back the user message so the session stays consistent
-        _sessions[session_id].pop()
-        raise HTTPException(status_code=500, detail="The agent encountered an error processing your request.") from None
-
-    # Update session with the complete message history (includes tool calls/results)
-    _sessions[session_id] = list(result["messages"])
-
-    # Extract the final AI response
-    final_message = result["messages"][-1]
-
-    logger.info(
-        "Chat response — session=%s | tokens=%d (prompt=%d, completion=%d) | LLM calls=%d",
-        session_id,
-        token_info["total_tokens"],
-        token_info["prompt_tokens"],
-        token_info["completion_tokens"],
-        token_info["llm_calls"],
-    )
-
-    return JSONResponse(
-        {
-            "response": final_message.content,
-            "token_info": token_info,
-        }
+    # Stream SSE events as the agent thinks and calls tools
+    return StreamingResponse(
+        _sse_event_generator(_AGENT, _sessions[session_id], session_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

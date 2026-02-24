@@ -186,8 +186,9 @@ async function sendMessage() {
     // Render user message
     addMessageToUI("user", text, images.map(img => img.dataUrl));
 
-    // Show thinking indicator
-    const thinkingRow = addThinkingIndicator();
+    // Show the status indicator (replaces the old bouncing-dots thinking indicator)
+    const statusRow = addStatusIndicator();
+    const statusContainer = statusRow.querySelector(".thinking-status");
     isWaiting = true;
     updateSendButton();
 
@@ -205,10 +206,8 @@ async function sendMessage() {
             body: formData,
         });
 
-        thinkingRow.remove();
-
         if (resp.status === 401) {
-            // Session expired — show login screen
+            statusRow.remove();
             chatScreen.classList.add("hidden");
             loginScreen.classList.remove("hidden");
             loginError.textContent = "Session expired. Please log in again.";
@@ -217,20 +216,114 @@ async function sendMessage() {
         }
 
         if (!resp.ok) {
+            statusRow.remove();
             const data = await resp.json().catch(() => ({}));
             addMessageToUI("assistant", `**Error:** ${data.detail || "Something went wrong. Please try again."}`);
             return;
         }
 
-        const data = await resp.json();
-        addMessageToUI("assistant", data.response, [], data.token_info);
+        // Read the SSE stream and update the status indicator as events arrive
+        await readSSEStream(resp, statusRow, statusContainer);
     } catch (err) {
-        thinkingRow.remove();
+        statusRow.remove();
         addMessageToUI("assistant", "**Error:** Could not reach the server. Is it still running?");
     } finally {
         isWaiting = false;
         updateSendButton();
         messageInput.focus();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SSE stream reader
+// ---------------------------------------------------------------------------
+
+async function readSSEStream(resp, statusRow, statusContainer) {
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE events are separated by double newlines
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop();
+
+        for (const part of parts) {
+            const trimmed = part.trim();
+            if (!trimmed.startsWith("data: ")) continue;
+            try {
+                const data = JSON.parse(trimmed.slice(6));
+                handleStreamEvent(data, statusRow, statusContainer);
+            } catch (_e) {
+                // Skip malformed SSE lines
+            }
+        }
+    }
+
+    // Process any remaining buffered data
+    if (buffer.trim().startsWith("data: ")) {
+        try {
+            const data = JSON.parse(buffer.trim().slice(6));
+            handleStreamEvent(data, statusRow, statusContainer);
+        } catch (_e) {
+            // Ignore
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SSE event handler — updates cumulative shadow text
+// ---------------------------------------------------------------------------
+
+function handleStreamEvent(data, statusRow, statusContainer) {
+    if (data.type === "thinking") {
+        // Only add "Thinking…" if the last item isn't already a thinking indicator
+        const lastItem = statusContainer.lastElementChild;
+        if (lastItem && lastItem.classList.contains("active") && lastItem.textContent === "Thinking\u2026") {
+            return;
+        }
+        const item = document.createElement("div");
+        item.className = "status-item active";
+        item.textContent = "Thinking\u2026";
+        statusContainer.appendChild(item);
+        scrollToBottom();
+
+    } else if (data.type === "tool_start") {
+        // Replace the active "Thinking…" with the tool description (present tense)
+        const lastItem = statusContainer.lastElementChild;
+        if (lastItem && lastItem.classList.contains("active")) {
+            lastItem.textContent = data.description;
+        } else {
+            const item = document.createElement("div");
+            item.className = "status-item active";
+            item.textContent = data.description;
+            statusContainer.appendChild(item);
+        }
+        scrollToBottom();
+
+    } else if (data.type === "tool_end") {
+        // Update the active item to past tense and mark completed
+        const activeItem = statusContainer.querySelector(".status-item.active");
+        if (activeItem) {
+            activeItem.textContent = data.description;
+            activeItem.classList.remove("active");
+            activeItem.classList.add("completed");
+        }
+        scrollToBottom();
+
+    } else if (data.type === "final") {
+        // Remove the status indicator and render the final response
+        statusRow.remove();
+        addMessageToUI("assistant", data.response, [], data.token_info);
+
+    } else if (data.type === "error") {
+        statusRow.remove();
+        addMessageToUI("assistant", `**Error:** ${data.detail || "Something went wrong. Please try again."}`);
     }
 }
 
@@ -284,16 +377,14 @@ function addMessageToUI(role, text, imageDataUrls = [], tokenInfo = null) {
     scrollToBottom();
 }
 
-function addThinkingIndicator() {
+function addStatusIndicator() {
     const row = document.createElement("div");
     row.className = "message-row assistant";
     row.innerHTML = `
         <div class="message-avatar">⚡</div>
         <div class="message-content">
             <div class="message-role">NEC Expert</div>
-            <div class="thinking-indicator">
-                <span></span><span></span><span></span>
-            </div>
+            <div class="thinking-status"></div>
         </div>
     `;
     messagesEl.appendChild(row);
