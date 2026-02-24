@@ -30,6 +30,9 @@ const sendBtn       = document.getElementById("send-btn");
 const imageInput    = document.getElementById("image-input");
 const previewsEl    = document.getElementById("image-previews");
 const newChatBtn    = document.getElementById("new-chat-btn");
+const contextWheel  = document.getElementById("context-wheel");
+const wheelFill     = document.getElementById("wheel-fill");
+const wheelTooltip  = document.getElementById("wheel-tooltip");
 
 // ---------------------------------------------------------------------------
 // Markdown setup
@@ -357,21 +360,19 @@ function addMessageToUI(role, text, imageDataUrls = [], tokenInfo = null) {
             .replace(/\n/g, "<br>");
     }
 
-    // Token usage badge for assistant messages
-    let tokenHtml = "";
-    if (tokenInfo && tokenInfo.total_tokens) {
-        tokenHtml = `<div class="token-badge">${tokenInfo.total_tokens.toLocaleString()} tokens</div>`;
-    }
-
     row.innerHTML = `
         <div class="message-avatar">${avatarLabel}</div>
         <div class="message-content">
             <div class="message-role">${roleName}</div>
             ${imagesHtml}
             <div class="message-body">${bodyHtml}</div>
-            ${tokenHtml}
         </div>
     `;
+
+    // Update the global context wheel after assistant responses
+    if (tokenInfo) {
+        updateContextWheel(tokenInfo);
+    }
 
     messagesEl.appendChild(row);
     scrollToBottom();
@@ -397,6 +398,50 @@ function scrollToBottom() {
 }
 
 // ---------------------------------------------------------------------------
+// Context usage wheel
+// ---------------------------------------------------------------------------
+
+// SVG circle circumference = 2 * PI * r where r = 15.9155 ≈ 100
+const WHEEL_CIRCUMFERENCE = 100;
+
+function updateContextWheel(tokenInfo) {
+    if (!tokenInfo || !tokenInfo.context_window) return;
+
+    const used = tokenInfo.prompt_tokens || 0;
+    const total = tokenInfo.context_window;
+    const pct = Math.min(used / total, 1);
+
+    // Set the fill amount via stroke-dashoffset (100 = empty, 0 = full)
+    const offset = WHEEL_CIRCUMFERENCE * (1 - pct);
+    wheelFill.setAttribute("stroke-dashoffset", offset.toFixed(1));
+
+    // Color tiers: muted (<50%), accent (50-80%), warning orange (>80%)
+    let color;
+    if (pct < 0.5) {
+        color = "var(--text-muted)";
+    } else if (pct < 0.8) {
+        color = "var(--accent)";
+    } else {
+        color = "#e57c1a";
+    }
+    wheelFill.style.stroke = color;
+
+    // Custom hover tooltip with exact numbers
+    const pctDisplay = Math.round(pct * 100);
+    wheelTooltip.textContent = `${used.toLocaleString()} / ${total.toLocaleString()} tokens (${pctDisplay}%)`;
+
+    // Show the wheel (hidden until first response)
+    contextWheel.classList.remove("hidden");
+}
+
+function resetContextWheel() {
+    contextWheel.classList.add("hidden");
+    wheelFill.setAttribute("stroke-dashoffset", WHEEL_CIRCUMFERENCE);
+    wheelFill.style.stroke = "";
+    wheelTooltip.textContent = "";
+}
+
+// ---------------------------------------------------------------------------
 // New Chat
 // ---------------------------------------------------------------------------
 
@@ -417,6 +462,7 @@ newChatBtn.addEventListener("click", async () => {
     sessionId = generateSessionId();
     pendingImages = [];
     renderPreviews();
+    resetContextWheel();
 
     // Clear messages and show welcome
     messagesEl.innerHTML = `

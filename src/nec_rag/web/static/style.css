@@ -377,11 +377,54 @@ body {
     50% { opacity: 1; }
 }
 
-/* Token info badge */
-.token-badge {
+/* Context usage wheel (inline next to send button) */
+.context-wheel {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    cursor: default;
+    position: relative;
+}
+
+.context-wheel svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.wheel-bg {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 3;
+}
+
+.wheel-fill {
+    fill: none;
+    stroke: var(--text-muted);
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.6s ease, stroke 0.4s ease;
+}
+
+/* Hover tooltip for the context wheel */
+.wheel-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
     font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 8px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.context-wheel:hover .wheel-tooltip {
+    display: block;
 }
 
 /* ===================================================================

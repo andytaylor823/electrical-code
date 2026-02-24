@@ -66,6 +66,10 @@ def rag_search(user_request: str) -> str:
     IDs, article numbers, and page references. Each call returns up to 20
     subsections, which is usually more than enough to answer a question.
 
+    Results include the full text of each subsection plus a list of table IDs
+    referenced by those subsections. Table content is NOT included inline --
+    use nec_lookup(table_ids=[...]) to fetch any tables you need.
+
     USE WHEN: You do not yet know which NEC articles, sections, or tables are
     relevant to the user's question. This is a discovery tool for open-ended
     questions.
@@ -94,7 +98,8 @@ def rag_search(user_request: str) -> str:
             BAD example -- "'110.25' lockable page number marking"
 
     Returns:
-        str: Formatted context blocks, each containing the subsection ID, article number, page reference, and full text of the retrieved subsections.
+        str: Formatted context blocks (subsection ID, article number, page, full text)
+            followed by a list of referenced table IDs. Use nec_lookup to fetch tables.
     """
     embed_fn, collection = load_embedding_resources()
     logger.info("rag_search: user_request=%s  num_results=%d", user_request, _RAG_SEARCH_NUM_RESULTS)

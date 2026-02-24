@@ -27,6 +27,9 @@ wastes tokens and produces worse results.
    A semantic vector search across the entire NEC. Use ONLY when you do not yet know which \
 articles, sections, or tables are relevant. This is your default starting point for \
 genuinely open-ended questions where you have no idea where the answer lives.
+   NOTE: rag_search returns the full text of matching subsections but does NOT include \
+table content. It lists the IDs of tables referenced by those subsections. If you need \
+a table's data, follow up with nec_lookup(table_ids=[...]) to fetch it.
 
    HARD LIMITS ON rag_search:
    - MAXIMUM 2 calls per user question. A single well-crafted query usually suffices. \
@@ -91,6 +94,10 @@ article's outline, then nec_lookup to retrieve the right subsection.
 - Uncertain which article covers a topic: rag_search first, optionally \
 browse_nec_structure to orient yourself within a promising article, then nec_lookup \
 for the final text.
+- Question involves table data (ampacity, load calculations, fill tables, etc.): \
+rag_search to find the relevant sections, then nec_lookup(table_ids=[...]) to fetch \
+the specific tables listed in the rag_search results. Tables are not included inline \
+in rag_search results to keep context lean.
 
 RESPONSE STYLE:
 End your response after answering the user's question. Do NOT append unsolicited \

@@ -47,6 +47,9 @@ UPLOAD_DIR = Path(tempfile.mkdtemp(prefix="nec_uploads_"))
 # Path to static frontend assets
 STATIC_DIR = Path(__file__).parent / "static"
 
+# Context window size for the agent LLM (used by the frontend usage wheel)
+CONTEXT_WINDOW = int(os.getenv("CONTEXT_WINDOW_SIZE", "128000"))
+
 # ---------------------------------------------------------------------------
 # In-memory state (ephemeral — lost on server restart)
 # ---------------------------------------------------------------------------
@@ -186,6 +189,7 @@ def _stream_agent_thread(
             "completion_tokens": cb.completion_tokens + vision["completion_tokens"],
             "total_tokens": cb.total_tokens + vision["total_tokens"],
             "llm_calls": cb.successful_requests,
+            "context_window": CONTEXT_WINDOW,
         }
 
         # The last accumulated message is the final AI response

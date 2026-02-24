@@ -6,8 +6,6 @@ from difflib import get_close_matches
 
 import chromadb
 
-from nec_rag.agent.resources import load_table_index
-
 logger = logging.getLogger(__name__)
 
 
@@ -58,9 +56,11 @@ def _retrieve(query: str, embed_fn, collection: chromadb.Collection, n_results: 
 def _build_context(retrieved: list[dict]) -> str:
     """Format retrieved subsections into a markdown context string with source annotations.
 
-    Reads the pre-computed ``referenced_tables`` metadata on each chunk to
-    collect every table mentioned across the retrieved subsections, then
-    appends the full table content so the agent can reason over it.
+    Collects ``referenced_tables`` IDs from chunk metadata and lists them at
+    the end so the agent knows which tables are available for follow-up via
+    ``nec_lookup``, but does NOT inline the full table content (the agent can
+    fetch individual tables on demand, avoiding large context bloat from
+    tables like Table 310.4(1)).
     """
     sections = []
     all_ref_ids: set[str] = set()
@@ -77,11 +77,10 @@ def _build_context(retrieved: list[dict]) -> str:
 
     context_body = "\n\n".join(sections)
 
-    # Look up and format every referenced table
-    table_blocks = _resolve_table_refs(sorted(all_ref_ids))
-    if table_blocks:
-        context_body += "\n\n" + "=" * 60 + "\nREFERENCED TABLES\n" + "=" * 60 + "\n\n"
-        context_body += "\n\n".join(table_blocks)
+    # List referenced table IDs so the agent can fetch them via nec_lookup
+    if all_ref_ids:
+        table_list = ", ".join(sorted(all_ref_ids))
+        context_body += f"\n\n[Tables referenced by these sections: {table_list}. " "Use nec_lookup(table_ids=[...]) to retrieve any you need.]"
 
     return context_body
 
@@ -106,22 +105,6 @@ def _format_table_as_markdown(table: dict) -> str:
         lines.append(f"> {footnote}")
 
     return "\n".join(lines)
-
-
-def _resolve_table_refs(ref_ids: list[str]) -> list[str]:
-    """Look up table IDs in the structured data and return formatted markdown blocks."""
-    if not ref_ids:
-        return []
-
-    table_index = load_table_index()
-    blocks = []
-    for ref_id in ref_ids:
-        table = table_index.get(ref_id)
-        if table:
-            blocks.append(_format_table_as_markdown(table))
-        else:
-            logger.debug("Table reference '%s' not found in index", ref_id)
-    return blocks
 
 
 # ---------------------------------------------------------------------------

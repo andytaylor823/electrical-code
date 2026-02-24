@@ -85,6 +85,14 @@
                         <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                     </svg>
                 </button>
+                <div id="context-wheel" class="context-wheel hidden">
+                    <svg viewBox="0 0 36 36">
+                        <circle class="wheel-bg" cx="18" cy="18" r="15.9155"/>
+                        <circle id="wheel-fill" class="wheel-fill" cx="18" cy="18" r="15.9155"
+                                stroke-dasharray="100 100" stroke-dashoffset="100"/>
+                    </svg>
+                    <span id="wheel-tooltip" class="wheel-tooltip"></span>
+                </div>
             </div>
             <p class="input-hint">Cite specific NEC sections (e.g. "250.50") or ask broad questions. Images supported.</p>
         </footer>
