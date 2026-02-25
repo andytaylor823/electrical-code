@@ -1,6 +1,7 @@
 # Semi-processed data
 data/intermediate/
 data/prepared/
+data/feedback/
 
 # Environment
 .env

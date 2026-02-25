@@ -63,29 +63,43 @@ def rag_search(user_request: str) -> str:
 
     Embeds the request and retrieves the most relevant NEC subsections from the
     vector database via cosine-similarity. Returns formatted context with section
-    IDs, article numbers, and page references. This is the broadest search tool
-    available -- it casts a wide net across the entire code.
+    IDs, article numbers, and page references. Each call returns up to 20
+    subsections, which is usually more than enough to answer a question.
 
-    USE WHEN: The user asks a general question about electrical systems,
-    installations, or code requirements and does not cite a specific NEC section
-    or table. This should be the primary starting tool for discovering which parts
-    of the NEC are relevant to a question.
+    Results include the full text of each subsection plus a list of table IDs
+    referenced by those subsections. Table content is NOT included inline --
+    use nec_lookup(table_ids=[...]) to fetch any tables you need.
 
-    DO NOT USE WHEN: The user requests information about a particular, known
-    section or table of the NEC (e.g. "What does 250.50 say?"). Use nec_lookup
-    for those cases instead.
+    USE WHEN: You do not yet know which NEC articles, sections, or tables are
+    relevant to the user's question. This is a discovery tool for open-ended
+    questions.
+
+    DO NOT USE WHEN:
+    - You already know specific section or table IDs (use nec_lookup instead).
+    - You want to follow up on results from a prior rag_search (use nec_lookup
+      for the exact text of sections you already discovered).
+    - You have already called rag_search twice for this user question.
+
+    LIMIT: Maximum 2 calls per user question. One well-crafted query usually
+    suffices.
 
     Args:
-        user_request: A natural-language description of what NEC content to find.
-            This is a semantic vector search, NOT a keyword search -- write the
-            request as a complete, natural sentence or question (e.g. "What are the
-            grounding requirements for a residential service entrance?"). Do NOT
-            reduce it to keyword fragments or use quotation marks around terms.
-            Natural language produces significantly better retrieval results than
-            keyword amalgamations.
+        user_request: A single, focused natural-language question describing what
+            NEC content to find. This is a semantic vector search -- write it as a
+            natural sentence or question for best results.
+            MUST NOT contain section numbers (e.g. "250.50"), article numbers
+            (e.g. "Article 705"), or table IDs (e.g. "Table 220.55"). If you
+            already know the ID, use nec_lookup instead.
+            MUST NOT contain quotation marks, Boolean operators, or keyword
+            fragments -- these degrade retrieval quality.
+            MUST NOT combine multiple unrelated topics in a single query.
+            GOOD example -- "grounding requirements for residential service entrances"
+            BAD example -- "NEC 2023 Article 250 grounding; Article 705 705.12 interconnection"
+            BAD example -- "'110.25' lockable page number marking"
 
     Returns:
-        str: Formatted context blocks, each containing the subsection ID, article number, page reference, and full text of the retrieved subsections.
+        str: Formatted context blocks (subsection ID, article number, page, full text)
+            followed by a list of referenced table IDs. Use nec_lookup to fetch tables.
     """
     embed_fn, collection = load_embedding_resources()
     logger.info("rag_search: user_request=%s  num_results=%d", user_request, _RAG_SEARCH_NUM_RESULTS)
