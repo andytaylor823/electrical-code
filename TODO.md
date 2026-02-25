@@ -119,7 +119,7 @@ Move beyond the CLI to a web interface. Must be **zero-cost** — no paid hostin
 - [x] Support image upload (drag-and-drop / click-to-attach) for the `explain_image` tool
 - [x] Simple password auth (configured via `NEC_APP_PASSWORD` in `.env`)
 - [x] Markdown rendering in assistant messages (NEC citations with code blocks, tables, etc.)
-- [ ] Streaming responses (SSE) for token-by-token output
+- [x] Streaming responses (SSE) for token-by-token output
 - [ ] Display a "sources" panel showing which chunks were retrieved and their relevance scores
 - [ ] Collapsible source text for NEC citations
 
