@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NEC Code Expert</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=2">
     <!-- Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
 </head>
@@ -39,10 +39,34 @@
                 <span class="header-icon">⚡</span>
                 <h1>NEC Code Expert</h1>
             </div>
-            <button id="new-chat-btn" class="new-chat-btn" title="Start a new conversation">
-                + New Chat
-            </button>
+            <div class="header-right">
+                <button id="feedback-btn" class="header-btn" title="Leave feedback about this conversation">
+                    Leave Feedback
+                </button>
+                <button id="new-chat-btn" class="header-btn new-chat-btn" title="Start a new conversation">
+                    + New Chat
+                </button>
+            </div>
         </header>
+
+        <!-- Feedback overlay -->
+        <div id="feedback-overlay" class="feedback-overlay hidden">
+            <div class="feedback-card">
+                <div id="feedback-form">
+                    <h3>Leave Feedback</h3>
+                    <p class="feedback-prompt">How was your experience? Describe what happened or what could be improved.</p>
+                    <textarea id="feedback-input" class="feedback-input" placeholder="e.g. The answer about grounding was incomplete…" rows="4"></textarea>
+                    <p id="feedback-error" class="feedback-error"></p>
+                    <div class="feedback-actions">
+                        <button id="feedback-cancel-btn" class="feedback-cancel-btn">Cancel</button>
+                        <button id="feedback-submit-btn" class="feedback-submit-btn" disabled>Submit</button>
+                    </div>
+                </div>
+                <div id="feedback-success" class="feedback-success hidden">
+                    Thanks for your feedback!
+                </div>
+            </div>
+        </div>
 
         <!-- Messages Area -->
         <main id="messages" class="messages">
@@ -100,6 +124,6 @@
         </footer>
     </div>
 
-    <script src="/static/chat.js"></script>
+    <script src="/static/chat.js?v=2"></script>
 </body>
 </html>

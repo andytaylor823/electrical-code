@@ -40,6 +40,15 @@ const contextWheel  = document.getElementById("context-wheel");
 const wheelFill     = document.getElementById("wheel-fill");
 const wheelTooltip  = document.getElementById("wheel-tooltip");
 
+const feedbackBtn       = document.getElementById("feedback-btn");
+const feedbackOverlay   = document.getElementById("feedback-overlay");
+const feedbackForm      = document.getElementById("feedback-form");
+const feedbackInput     = document.getElementById("feedback-input");
+const feedbackSubmitBtn = document.getElementById("feedback-submit-btn");
+const feedbackCancelBtn = document.getElementById("feedback-cancel-btn");
+const feedbackError     = document.getElementById("feedback-error");
+const feedbackSuccess   = document.getElementById("feedback-success");
+
 // ---------------------------------------------------------------------------
 // Markdown setup
 // ---------------------------------------------------------------------------
@@ -486,7 +495,7 @@ const WHEEL_CIRCUMFERENCE = 100;
 function updateContextWheel(tokenInfo) {
     if (!tokenInfo || !tokenInfo.context_window) return;
 
-    const used = tokenInfo.prompt_tokens || 0;
+    const used = tokenInfo.context_used || 0;
     const total = tokenInfo.context_window;
     const pct = Math.min(used / total, 1);
 
@@ -505,7 +514,6 @@ function updateContextWheel(tokenInfo) {
     }
     wheelFill.style.stroke = color;
 
-    // Custom hover tooltip with exact numbers
     const pctDisplay = Math.round(pct * 100);
     wheelTooltip.textContent = `${used.toLocaleString()} / ${total.toLocaleString()} tokens (${pctDisplay}%)`;
 
@@ -558,6 +566,71 @@ newChatBtn.addEventListener("click", async () => {
     messageInput.style.height = "auto";
     updateSendButton();
     messageInput.focus();
+});
+
+// ---------------------------------------------------------------------------
+// Feedback overlay
+// ---------------------------------------------------------------------------
+
+function openFeedback() {
+    feedbackInput.value = "";
+    feedbackError.textContent = "";
+    feedbackSubmitBtn.disabled = true;
+    feedbackOverlay.classList.remove("hidden");
+    feedbackInput.focus();
+}
+
+function closeFeedback() {
+    feedbackOverlay.classList.add("hidden");
+    // Reset to form view (in case success message was showing)
+    feedbackForm.classList.remove("hidden");
+    feedbackSuccess.classList.add("hidden");
+}
+
+feedbackBtn.addEventListener("click", openFeedback);
+feedbackCancelBtn.addEventListener("click", closeFeedback);
+
+// Close overlay when clicking the backdrop (not the card itself)
+feedbackOverlay.addEventListener("click", (e) => {
+    if (e.target === feedbackOverlay) closeFeedback();
+});
+
+// Enable/disable submit based on textarea content
+feedbackInput.addEventListener("input", () => {
+    feedbackSubmitBtn.disabled = feedbackInput.value.trim().length === 0;
+});
+
+feedbackSubmitBtn.addEventListener("click", async () => {
+    const text = feedbackInput.value.trim();
+    if (!text) return;
+
+    feedbackSubmitBtn.disabled = true;
+    feedbackError.textContent = "";
+
+    try {
+        const resp = await fetch("/api/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId, feedback_text: text }),
+        });
+
+        if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            feedbackError.textContent = data.detail || "Something went wrong.";
+            feedbackSubmitBtn.disabled = false;
+            return;
+        }
+
+        // Swap form for success message, then auto-close after a short delay
+        feedbackForm.classList.add("hidden");
+        feedbackSuccess.classList.remove("hidden");
+        setTimeout(() => {
+            closeFeedback();
+        }, 1500);
+    } catch {
+        feedbackError.textContent = "Could not reach the server.";
+        feedbackSubmitBtn.disabled = false;
+    }
 });
 
 // ---------------------------------------------------------------------------

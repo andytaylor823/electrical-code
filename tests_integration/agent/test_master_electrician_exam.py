@@ -12,6 +12,9 @@ Run:
 
 Correct answers are noted in comments beside each case but are NOT
 provided to the agent.
+
+See here for the full questions and answers:
+https://www.tests.com/practice/Master-Electrician-Practice-Test
 """
 
 import logging

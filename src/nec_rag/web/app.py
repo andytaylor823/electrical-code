@@ -16,6 +16,7 @@ import tempfile
 import threading
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -49,6 +50,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 # Context window size for the agent LLM (used by the frontend usage wheel)
 CONTEXT_WINDOW = int(os.getenv("CONTEXT_WINDOW_SIZE", "128000"))
+
+# Directory for user-submitted feedback (conversation snapshots + comments)
+FEEDBACK_DIR = ROOT / "data" / "feedback"
 
 # ---------------------------------------------------------------------------
 # In-memory state (ephemeral — lost on server restart)
@@ -146,6 +150,33 @@ def _process_tools_node(new_msgs: list, pending_descriptions: dict, put_fn: call
     put_fn({"type": "thinking"})
 
 
+def _last_call_prompt_tokens(accumulated_messages: list) -> int:
+    """Return prompt_tokens from the last AI message's metadata.
+
+    This is the single-call prompt size reflecting actual context window usage
+    (full history + all tool results), unlike the callback's cumulative total
+    which sums across every LLM call in the invocation.
+
+    Checks both ``response_metadata["token_usage"]`` (OpenAI-style) and
+    ``usage_metadata`` (LangChain standard) since the available attribute
+    depends on the LLM provider and streaming mode.
+    """
+    for msg in reversed(accumulated_messages):
+        # OpenAI-style: response_metadata.token_usage.prompt_tokens
+        rm_usage = getattr(msg, "response_metadata", {}).get("token_usage", {})
+        if rm_usage:
+            val = rm_usage.get("prompt_tokens", 0)
+            if val:
+                return val
+
+        # LangChain standard: usage_metadata.input_tokens
+        um = getattr(msg, "usage_metadata", None) or {}
+        if isinstance(um, dict) and um.get("input_tokens"):
+            return um["input_tokens"]
+
+    return 0
+
+
 def _stream_agent_thread(
     agent,
     messages: list,
@@ -190,12 +221,15 @@ def _stream_agent_thread(
 
         # Build combined token info (agent LLM + standalone vision calls)
         vision = get_vision_usage()
+        context_used = _last_call_prompt_tokens(accumulated_messages)
+
         token_info = {
             "prompt_tokens": cb.prompt_tokens + vision["prompt_tokens"],
             "completion_tokens": cb.completion_tokens + vision["completion_tokens"],
             "total_tokens": cb.total_tokens + vision["total_tokens"],
             "llm_calls": cb.successful_requests,
             "context_window": CONTEXT_WINDOW,
+            "context_used": context_used,
         }
 
         # The last accumulated message is the final AI response
@@ -205,10 +239,12 @@ def _stream_agent_thread(
         _put({"type": "final", "response": final_content, "token_info": token_info})
 
         logger.info(
-            "Stream complete — tokens=%d (prompt=%d, completion=%d) | LLM calls=%d",
+            "Stream complete — tokens=%d (prompt=%d, completion=%d) | context_used=%d/%d | LLM calls=%d",
             token_info["total_tokens"],
             token_info["prompt_tokens"],
             token_info["completion_tokens"],
+            context_used,
+            CONTEXT_WINDOW,
             token_info["llm_calls"],
         )
 
@@ -367,6 +403,59 @@ async def new_chat(request: Request):
     if session_id and session_id in _sessions:
         del _sessions[session_id]
         logger.info("Session cleared: %s", session_id)
+    return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Feedback
+# ---------------------------------------------------------------------------
+
+
+def _serialize_message(msg) -> dict:
+    """Convert a LangChain BaseMessage into a plain dict for JSON export."""
+    entry: dict = {"role": msg.type, "content": msg.content}
+    # AI messages may carry tool calls with name, args, and id
+    tool_calls = getattr(msg, "tool_calls", None)
+    if tool_calls:
+        entry["tool_calls"] = [{"name": tc["name"], "args": tc["args"], "id": tc["id"]} for tc in tool_calls]
+    # Tool response messages reference the call they answered
+    if msg.type == "tool":
+        entry["tool_call_id"] = getattr(msg, "tool_call_id", None)
+        entry["name"] = getattr(msg, "name", None)
+    return entry
+
+
+@app.post("/api/feedback")
+async def submit_feedback(request: Request):
+    """Save user feedback along with the full conversation snapshot to disk."""
+    _check_auth(request)
+    body = await request.json()
+
+    session_id = body.get("session_id", "")
+    feedback_text = (body.get("feedback_text") or "").strip()
+    if not feedback_text:
+        raise HTTPException(status_code=400, detail="Feedback text is required")
+
+    # Serialize the conversation history (empty list if session has no messages yet)
+    messages = _sessions.get(session_id, [])
+    conversation = [_serialize_message(m) for m in messages]
+
+    now = datetime.now(timezone.utc)
+    payload = {
+        "feedback_text": feedback_text,
+        "session_id": session_id,
+        "timestamp": now.isoformat(),
+        "message_count": len(conversation),
+        "conversation": conversation,
+    }
+
+    # Write to data/feedback/ with a timestamped filename
+    FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{now.strftime('%Y-%m-%d_%H-%M-%S')}_{session_id}.json"
+    filepath = FEEDBACK_DIR / filename
+    filepath.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    logger.info("Feedback saved: %s (%d messages, %d chars of feedback)", filename, len(conversation), len(feedback_text))
     return JSONResponse({"ok": True})
 
 

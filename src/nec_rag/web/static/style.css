@@ -161,7 +161,13 @@ body {
     font-weight: 600;
 }
 
-.new-chat-btn {
+.header-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.header-btn {
     padding: 8px 16px;
     background: transparent;
     border: 1px solid var(--border);
@@ -172,7 +178,7 @@ body {
     transition: background 0.2s, border-color 0.2s;
 }
 
-.new-chat-btn:hover {
+.header-btn:hover {
     background: var(--bg-hover);
     border-color: var(--text-secondary);
 }
@@ -593,6 +599,120 @@ body {
     max-width: var(--max-width);
     margin-left: auto;
     margin-right: auto;
+}
+
+/* ===================================================================
+   Feedback Overlay
+   =================================================================== */
+
+.feedback-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.feedback-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 24px 20px;
+    width: 90%;
+    max-width: 480px;
+}
+
+.feedback-card h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.feedback-prompt {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.feedback-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+    min-height: 80px;
+}
+
+.feedback-input:focus {
+    border-color: var(--accent);
+}
+
+.feedback-error {
+    color: var(--error);
+    font-size: 13px;
+    min-height: 18px;
+    margin-top: 6px;
+}
+
+.feedback-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.feedback-cancel-btn {
+    padding: 8px 18px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.feedback-cancel-btn:hover {
+    background: var(--bg-hover);
+}
+
+.feedback-submit-btn {
+    padding: 8px 18px;
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+}
+
+.feedback-submit-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.feedback-submit-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.feedback-success {
+    text-align: center;
+    padding: 20px 0;
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 500;
 }
 
 /* ===================================================================
