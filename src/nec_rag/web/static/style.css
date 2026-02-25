@@ -377,6 +377,20 @@ body {
     50% { opacity: 1; }
 }
 
+/* Streaming cursor — blinking dot at the end of in-progress text */
+.message-body.streaming::after {
+    content: "\25CF";
+    display: inline;
+    margin-left: 2px;
+    color: var(--accent);
+    animation: streaming-blink 1s steps(2) infinite;
+}
+
+@keyframes streaming-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
 /* Context usage wheel (outside input box, aligned to send button) */
 .context-wheel {
     width: 32px;

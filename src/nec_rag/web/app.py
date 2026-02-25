@@ -23,7 +23,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_community.callbacks import get_openai_callback
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessageChunk, HumanMessage
 from starlette.responses import StreamingResponse
 
 from nec_rag.agent.agent import build_nec_agent
@@ -174,13 +174,19 @@ def _stream_agent_thread(
 
     try:
         with get_openai_callback() as cb:
-            for chunk in agent.stream({"messages": messages}, stream_mode="updates"):
-                for node_name, node_output in chunk.items():
-                    new_msgs = node_output.get("messages", [])
-                    accumulated_messages.extend(new_msgs)
-                    handler = node_handlers.get(node_name)
-                    if handler:
-                        handler(new_msgs)
+            # Stream both node-level updates (for tool events) and message-level
+            # chunks (for token-by-token text deltas from the LLM)
+            for mode, data in agent.stream({"messages": messages}, stream_mode=["messages", "updates"]):
+                if mode == "updates":
+                    for node_name, node_output in data.items():
+                        new_msgs = node_output.get("messages", [])
+                        accumulated_messages.extend(new_msgs)
+                        handler = node_handlers.get(node_name)
+                        if handler:
+                            handler(new_msgs)
+                elif mode == "messages":
+                    if isinstance(data[0], AIMessageChunk) and isinstance(data[0].content, str) and data[0].content:
+                        _put({"type": "text_delta", "content": data[0].content})
 
         # Build combined token info (agent LLM + standalone vision calls)
         vision = get_vision_usage()

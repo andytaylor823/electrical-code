@@ -13,6 +13,12 @@ let sessionId = generateSessionId();
 let pendingImages = [];   // { file: File, dataUrl: string }
 let isWaiting = false;
 
+// Streaming response state (active during token-by-token text delivery)
+let streamingAccumulator = "";
+let streamingBodyEl = null;
+let streamingRow = null;
+let renderScheduled = false;
+
 // ---------------------------------------------------------------------------
 // DOM references
 // ---------------------------------------------------------------------------
@@ -280,6 +286,59 @@ async function readSSEStream(resp, statusRow, statusContainer) {
 }
 
 // ---------------------------------------------------------------------------
+// Streaming response helpers
+// ---------------------------------------------------------------------------
+
+function beginStreamingResponse(statusRow) {
+    // Create the assistant message row that tokens will stream into
+    streamingRow = document.createElement("div");
+    streamingRow.className = "message-row assistant";
+    streamingRow.innerHTML = `
+        <div class="message-avatar">\u26A1</div>
+        <div class="message-content">
+            <div class="message-role">NEC Expert</div>
+            <div class="message-body streaming"></div>
+        </div>
+    `;
+    statusRow.remove();
+    messagesEl.appendChild(streamingRow);
+    streamingBodyEl = streamingRow.querySelector(".message-body");
+    streamingAccumulator = "";
+    renderScheduled = false;
+}
+
+function scheduleStreamingRender() {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    requestAnimationFrame(() => {
+        if (streamingBodyEl) {
+            streamingBodyEl.innerHTML = renderMarkdown(streamingAccumulator);
+            scrollToBottom();
+        }
+        renderScheduled = false;
+    });
+}
+
+function finalizeStreamingResponse(tokenInfo, fullResponse) {
+    // Use the server's authoritative full text if provided, otherwise keep the accumulator
+    const finalText = fullResponse || streamingAccumulator;
+    if (streamingBodyEl) {
+        streamingBodyEl.innerHTML = renderMarkdown(finalText);
+        streamingBodyEl.classList.remove("streaming");
+    }
+    if (tokenInfo) {
+        updateContextWheel(tokenInfo);
+    }
+    scrollToBottom();
+
+    // Reset streaming state
+    streamingAccumulator = "";
+    streamingBodyEl = null;
+    streamingRow = null;
+    renderScheduled = false;
+}
+
+// ---------------------------------------------------------------------------
 // SSE event handler — updates cumulative shadow text
 // ---------------------------------------------------------------------------
 
@@ -319,12 +378,32 @@ function handleStreamEvent(data, statusRow, statusContainer) {
         }
         scrollToBottom();
 
+    } else if (data.type === "text_delta") {
+        // First delta: transition from status indicator to streaming message bubble
+        if (!streamingBodyEl) {
+            beginStreamingResponse(statusRow);
+        }
+        streamingAccumulator += data.content;
+        scheduleStreamingRender();
+
     } else if (data.type === "final") {
-        // Remove the status indicator and render the final response
-        statusRow.remove();
-        addMessageToUI("assistant", data.response, [], data.token_info);
+        if (streamingBodyEl) {
+            // We were streaming — finalize with authoritative text and token info
+            finalizeStreamingResponse(data.token_info, data.response);
+        } else {
+            // No deltas received (e.g. empty response) — fall back to full render
+            statusRow.remove();
+            addMessageToUI("assistant", data.response, [], data.token_info);
+        }
 
     } else if (data.type === "error") {
+        // Clean up streaming state if active
+        if (streamingBodyEl) {
+            streamingBodyEl.classList.remove("streaming");
+            streamingAccumulator = "";
+            streamingBodyEl = null;
+            streamingRow = null;
+        }
         statusRow.remove();
         addMessageToUI("assistant", `**Error:** ${data.detail || "Something went wrong. Please try again."}`);
     }
