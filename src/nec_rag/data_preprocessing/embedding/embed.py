@@ -49,8 +49,11 @@ def get_chroma_collection(model_key: str, reset: bool = False) -> chromadb.Colle
 
 def _embed_qwen3(texts: list[str], batch_size: int) -> list[list[float]]:
     """Embed texts using the local Qwen3-Embedding-8B model via sentence-transformers."""
-    import torch  # pylint: disable=import-outside-toplevel
-    from sentence_transformers import SentenceTransformer  # pylint: disable=import-outside-toplevel
+    try:
+        import torch  # pylint: disable=import-outside-toplevel
+        from sentence_transformers import SentenceTransformer  # pylint: disable=import-outside-toplevel
+    except ImportError as exc:
+        raise ImportError('Local embedding models require the "local" extras: pip install -e ".[local]"') from exc
 
     logger.info("Loading Qwen3-Embedding-8B (this may take a minute on first run)...")
     t0 = time.time()

@@ -51,8 +51,11 @@ def load_embedding_resources(model_key: str = "azure-large"):
 
     # Build embedding function based on model type
     if model_cfg["type"] == "local":
-        import torch  # pylint: disable=import-outside-toplevel
-        from sentence_transformers import SentenceTransformer  # pylint: disable=import-outside-toplevel
+        try:
+            import torch  # pylint: disable=import-outside-toplevel
+            from sentence_transformers import SentenceTransformer  # pylint: disable=import-outside-toplevel
+        except ImportError as exc:
+            raise ImportError('Local embedding models require the "local" extras: pip install -e ".[local]"') from exc
 
         logger.info("Loading local embedding model '%s'...", model_cfg["display_name"])
         st_model = SentenceTransformer(
