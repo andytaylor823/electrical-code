@@ -184,6 +184,77 @@ body {
 }
 
 /* ===================================================================
+   Roadmap Banner (collapsible, between header and messages)
+   =================================================================== */
+
+.roadmap {
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.roadmap summary {
+    padding: 8px 20px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-weight: 500;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s;
+}
+
+.roadmap summary::-webkit-details-marker {
+    display: none;
+}
+
+.roadmap summary::before {
+    content: "\25B6";
+    font-size: 9px;
+    transition: transform 0.2s;
+}
+
+.roadmap[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.roadmap summary:hover {
+    color: var(--text-secondary);
+}
+
+.roadmap ul {
+    margin: 0;
+    padding: 0 20px 6px 38px;
+    list-style: disc;
+}
+
+.roadmap li {
+    margin-bottom: 2px;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.roadmap-cta {
+    padding: 0 20px 10px 38px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.roadmap-feedback-link {
+    color: var(--accent);
+    text-decoration: none;
+    transition: text-decoration-color 0.15s;
+}
+
+.roadmap-feedback-link:hover {
+    text-decoration: underline;
+}
+
+/* ===================================================================
    Messages Area
    =================================================================== */
 
@@ -833,6 +904,20 @@ body {
 @media (max-width: 640px) {
     .chat-header {
         padding: 10px 14px;
+    }
+
+    .roadmap summary {
+        padding: 8px 14px;
+    }
+
+    .roadmap ul {
+        padding-left: 30px;
+        padding-right: 14px;
+    }
+
+    .roadmap-cta {
+        padding-left: 30px;
+        padding-right: 14px;
     }
 
     .messages {

@@ -851,6 +851,14 @@ function closeFeedback() {
 feedbackBtn.addEventListener("click", openFeedback);
 feedbackCancelBtn.addEventListener("click", closeFeedback);
 
+// Roadmap "Submit feedback!" link opens the same overlay
+document.addEventListener("click", (e) => {
+    const link = e.target.closest(".roadmap-feedback-link");
+    if (!link) return;
+    e.preventDefault();
+    openFeedback();
+});
+
 // Close overlay when clicking the backdrop (not the card itself)
 feedbackOverlay.addEventListener("click", (e) => {
     if (e.target === feedbackOverlay) closeFeedback();
