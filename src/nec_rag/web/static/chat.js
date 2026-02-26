@@ -70,6 +70,260 @@ function renderMarkdown(text) {
 }
 
 // ---------------------------------------------------------------------------
+// Section reference detection and popover
+// ---------------------------------------------------------------------------
+
+// Client-side caches for section and table lookups
+const _sectionCache = new Map();
+const _tableCache = new Map();
+
+function fetchSectionData(sectionId) {
+    if (_sectionCache.has(sectionId)) return _sectionCache.get(sectionId);
+    const promise = fetch(`/api/section/${encodeURIComponent(sectionId)}`)
+        .then(resp => {
+            if (!resp.ok) throw new Error(`Section ${sectionId} not found`);
+            return resp.json();
+        })
+        .catch(err => {
+            _sectionCache.delete(sectionId);
+            throw err;
+        });
+    _sectionCache.set(sectionId, promise);
+    return promise;
+}
+
+function fetchTableData(tableId) {
+    if (_tableCache.has(tableId)) return _tableCache.get(tableId);
+    const promise = fetch(`/api/table/${encodeURIComponent(tableId)}`)
+        .then(resp => {
+            if (!resp.ok) throw new Error(`Table ${tableId} not found`);
+            return resp.json();
+        })
+        .catch(err => {
+            _tableCache.delete(tableId);
+            throw err;
+        });
+    _tableCache.set(tableId, promise);
+    return promise;
+}
+
+/**
+ * Walk text nodes and wrap NEC section/table references in interactive spans.
+ *
+ * "Table 690.31(A)(3)(1)" -> <span class="nec-ref" data-ref-type="table" data-ref-id="690.31(A)(3)(1)">
+ * "Section 705.12"        -> <span class="nec-ref" data-ref-type="section" data-ref-id="705.12">
+ * "705.12"  (bare)        -> <span class="nec-ref" data-ref-type="section" data-ref-id="705.12">
+ *
+ * Table matches take priority so "Table 690.31" is never misidentified as a section.
+ * Article numbers in the NEC start at 90, so requiring >= 90 avoids false
+ * positives on measurements like "1.8 m" or "30.5 volts".
+ */
+function postProcessSectionRefs(container) {
+    // Combined pattern with two alternatives (table first for priority):
+    //   1) "Table " + digits.digits + optional (A)(3)(1)-style suffixes
+    //   2) Optional "Section "/"§" + digits.digits + optional suffixes
+    const NEC_REF_RE = /(?:(Table)\s+((?:9\d|[1-9]\d{2})\.\d+(?:\([A-Za-z0-9]+\))*))|(?:(?:Section|§)\s*)?((\b(?:9\d|[1-9]\d{2})\.\d+)(?:\([A-Za-z0-9]+\))*)/gi;
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+    const textNodes = [];
+    while (walker.nextNode()) {
+        const parent = walker.currentNode.parentNode;
+        if (parent.closest && (parent.closest(".nec-ref") || parent.closest("code") || parent.closest("pre"))) continue;
+        if (NEC_REF_RE.test(walker.currentNode.nodeValue)) {
+            textNodes.push(walker.currentNode);
+        }
+        NEC_REF_RE.lastIndex = 0;
+    }
+
+    for (const node of textNodes) {
+        const text = node.nodeValue;
+        NEC_REF_RE.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let lastIndex = 0;
+        let match;
+
+        while ((match = NEC_REF_RE.exec(text)) !== null) {
+            if (match.index > lastIndex) {
+                frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+            }
+            const fullMatch = match[0];
+            const isTable = !!match[1];
+            // For tables: match[2] is the full ID with suffixes (e.g. "690.31(A)(3)(1)")
+            // For sections: match[4] is the base digits.digits ID
+            const refId = isTable ? match[2] : match[4];
+
+            const span = document.createElement("span");
+            span.className = "nec-ref";
+            span.dataset.refType = isTable ? "table" : "section";
+            span.dataset.refId = refId;
+            span.textContent = fullMatch;
+            frag.appendChild(span);
+
+            lastIndex = match.index + fullMatch.length;
+        }
+
+        if (lastIndex < text.length) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+
+        node.parentNode.replaceChild(frag, node);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Popover (single shared DOM element)
+// ---------------------------------------------------------------------------
+
+let _popoverEl = null;       // the popover DOM element
+let _popoverPinned = false;  // true when the user clicked to persist
+let _popoverTarget = null;   // the .nec-section-ref span that triggered it
+let _hideTimeout = null;     // delay before hiding on mouseleave
+
+function _ensurePopover() {
+    if (_popoverEl) return _popoverEl;
+    _popoverEl = document.createElement("div");
+    _popoverEl.className = "nec-popover hidden";
+    _popoverEl.innerHTML = `
+        <div class="nec-popover-header"></div>
+        <div class="nec-popover-body"></div>
+    `;
+    // Keep the popover open while the cursor is over it (hover mode)
+    _popoverEl.addEventListener("mouseenter", () => { clearTimeout(_hideTimeout); });
+    _popoverEl.addEventListener("mouseleave", () => { if (!_popoverPinned) _scheduleHide(); });
+    document.body.appendChild(_popoverEl);
+    return _popoverEl;
+}
+
+function _scheduleHide() {
+    clearTimeout(_hideTimeout);
+    _hideTimeout = setTimeout(() => { _dismissPopover(); }, 200);
+}
+
+function _dismissPopover() {
+    clearTimeout(_hideTimeout);
+    if (!_popoverEl) return;
+    _popoverEl.classList.add("hidden");
+    _popoverEl.classList.remove("pinned", "table-mode");
+    _popoverPinned = false;
+    _popoverTarget = null;
+}
+
+function _positionPopover(refEl) {
+    const pop = _ensurePopover();
+    const rect = refEl.getBoundingClientRect();
+    // Tables need more room; sections are narrower
+    const isTable = pop.classList.contains("table-mode");
+    const popWidth = isTable ? 520 : 380;
+
+    // Horizontal: centre on the ref, clamped to viewport
+    let left = rect.left + rect.width / 2 - popWidth / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - popWidth - 8));
+
+    // Vertical: prefer above, fall below if not enough room
+    pop.style.width = popWidth + "px";
+    pop.style.left = left + "px";
+
+    // Temporarily show off-screen to measure height
+    pop.style.top = "-9999px";
+    pop.classList.remove("hidden");
+    const popHeight = pop.offsetHeight;
+
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceAbove >= popHeight + 8 || spaceAbove >= spaceBelow) {
+        pop.style.top = (rect.top + window.scrollY - popHeight - 6) + "px";
+    } else {
+        pop.style.top = (rect.bottom + window.scrollY + 6) + "px";
+    }
+}
+
+function _showPopover(refEl, pinned) {
+    clearTimeout(_hideTimeout);
+    const pop = _ensurePopover();
+    const header = pop.querySelector(".nec-popover-header");
+    const body = pop.querySelector(".nec-popover-body");
+
+    const refType = refEl.dataset.refType;
+    const refId = refEl.dataset.refId;
+
+    _popoverTarget = refEl;
+    _popoverPinned = pinned;
+
+    // Show loading state
+    header.textContent = refType === "table" ? `Table ${refId}` : `Section ${refId}`;
+    body.textContent = "Loading\u2026";
+    pop.classList.toggle("pinned", pinned);
+    pop.classList.toggle("table-mode", refType === "table");
+    _positionPopover(refEl);
+
+    if (refType === "table") {
+        fetchTableData(refId).then(data => {
+            if (_popoverTarget !== refEl) return;
+            let meta = "";
+            if (data.article_num) meta += `Article ${data.article_num}`;
+            if (data.page) meta += `${meta ? " \u00b7 " : ""}p.\u2009${data.page}`;
+            const metaHtml = meta ? `<span class="nec-popover-meta">${meta}</span>` : "";
+            header.innerHTML = `<strong>${_escHtml(data.title)}</strong>${metaHtml}`;
+            body.innerHTML = renderMarkdown(pinned ? data.markdown : _truncateText(data.markdown, 400));
+            _positionPopover(refEl);
+        }).catch(() => { _dismissPopover(); });
+    } else {
+        fetchSectionData(refId).then(data => {
+            if (_popoverTarget !== refEl) return;
+            header.innerHTML = `<strong>Section ${data.id}</strong><span class="nec-popover-meta">Article ${data.article_num} &middot; p.\u2009${data.page}</span>`;
+            body.textContent = pinned ? data.text : _truncateText(data.text, 300);
+            _positionPopover(refEl);
+        }).catch(() => { _dismissPopover(); });
+    }
+}
+
+function _truncateText(text, maxLen) {
+    return text.length > maxLen ? text.slice(0, maxLen) + "\u2026" : text;
+}
+
+function _escHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ---------------------------------------------------------------------------
+// Event delegation on the messages container (hover + click on section refs)
+// ---------------------------------------------------------------------------
+
+messagesEl.addEventListener("mouseenter", (e) => {
+    const ref = e.target.closest(".nec-ref");
+    if (!ref || _popoverPinned) return;
+    _showPopover(ref, false);
+}, true);
+
+messagesEl.addEventListener("mouseleave", (e) => {
+    const ref = e.target.closest(".nec-ref");
+    if (!ref || _popoverPinned) return;
+    _scheduleHide();
+}, true);
+
+messagesEl.addEventListener("click", (e) => {
+    const ref = e.target.closest(".nec-ref");
+    if (!ref) return;
+    e.preventDefault();
+    if (_popoverPinned && _popoverTarget === ref) {
+        _dismissPopover();
+        return;
+    }
+    _showPopover(ref, true);
+});
+
+document.addEventListener("click", (e) => {
+    if (!_popoverPinned) return;
+    if (_popoverEl && _popoverEl.contains(e.target)) return;
+    if (e.target.closest(".nec-ref")) return;
+    _dismissPopover();
+});
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && _popoverPinned) _dismissPopover();
+});
+
+// ---------------------------------------------------------------------------
 // Login
 // ---------------------------------------------------------------------------
 
@@ -334,6 +588,7 @@ function finalizeStreamingResponse(tokenInfo, fullResponse) {
     if (streamingBodyEl) {
         streamingBodyEl.innerHTML = renderMarkdown(finalText);
         streamingBodyEl.classList.remove("streaming");
+        postProcessSectionRefs(streamingBodyEl);
     }
     if (tokenInfo) {
         updateContextWheel(tokenInfo);
@@ -463,6 +718,12 @@ function addMessageToUI(role, text, imageDataUrls = [], tokenInfo = null) {
     }
 
     messagesEl.appendChild(row);
+
+    // Make section references interactive in assistant messages
+    if (role === "assistant") {
+        postProcessSectionRefs(row.querySelector(".message-body"));
+    }
+
     scrollToBottom();
 }
 
@@ -589,6 +850,14 @@ function closeFeedback() {
 
 feedbackBtn.addEventListener("click", openFeedback);
 feedbackCancelBtn.addEventListener("click", closeFeedback);
+
+// Roadmap "Submit feedback!" link opens the same overlay
+document.addEventListener("click", (e) => {
+    const link = e.target.closest(".roadmap-feedback-link");
+    if (!link) return;
+    e.preventDefault();
+    openFeedback();
+});
 
 // Close overlay when clicking the backdrop (not the card itself)
 feedbackOverlay.addEventListener("click", (e) => {

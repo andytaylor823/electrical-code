@@ -184,6 +184,77 @@ body {
 }
 
 /* ===================================================================
+   Roadmap Banner (collapsible, between header and messages)
+   =================================================================== */
+
+.roadmap {
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.roadmap summary {
+    padding: 8px 20px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-weight: 500;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s;
+}
+
+.roadmap summary::-webkit-details-marker {
+    display: none;
+}
+
+.roadmap summary::before {
+    content: "\25B6";
+    font-size: 9px;
+    transition: transform 0.2s;
+}
+
+.roadmap[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.roadmap summary:hover {
+    color: var(--text-secondary);
+}
+
+.roadmap ul {
+    margin: 0;
+    padding: 0 20px 6px 38px;
+    list-style: disc;
+}
+
+.roadmap li {
+    margin-bottom: 2px;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.roadmap-cta {
+    padding: 0 20px 10px 38px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.roadmap-feedback-link {
+    color: var(--accent);
+    text-decoration: none;
+    transition: text-decoration-color 0.15s;
+}
+
+.roadmap-feedback-link:hover {
+    text-decoration: underline;
+}
+
+/* ===================================================================
    Messages Area
    =================================================================== */
 
@@ -716,12 +787,137 @@ body {
 }
 
 /* ===================================================================
+   Section Reference Popovers
+   =================================================================== */
+
+.nec-ref {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-color: rgba(16, 163, 127, 0.35);
+    text-underline-offset: 2px;
+    cursor: pointer;
+    transition: text-decoration-color 0.15s;
+}
+
+.nec-ref:hover {
+    text-decoration-color: var(--accent);
+}
+
+.nec-popover {
+    position: absolute;
+    z-index: 200;
+    width: 380px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+    animation: popover-fade-in 0.12s ease-out;
+}
+
+.nec-popover.hidden {
+    display: none;
+}
+
+@keyframes popover-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.nec-popover-header {
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
+    line-height: 1.5;
+}
+
+.nec-popover-header strong {
+    font-weight: 600;
+}
+
+.nec-popover-meta {
+    float: right;
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-left: 12px;
+}
+
+.nec-popover-body {
+    padding: 10px 14px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    max-height: 180px;
+    overflow-y: hidden;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Pinned (clicked) state: taller with scrolling */
+.nec-popover.pinned .nec-popover-body {
+    max-height: 340px;
+    overflow-y: auto;
+}
+
+/* Markdown tables rendered inside the popover (for table lookups) */
+.nec-popover-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 6px 0;
+    font-size: 12px;
+}
+
+.nec-popover-body th, .nec-popover-body td {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    text-align: left;
+}
+
+.nec-popover-body th {
+    background: var(--bg-primary);
+    font-weight: 600;
+}
+
+/* Scrollbar inside pinned popover */
+.nec-popover-body::-webkit-scrollbar {
+    width: 5px;
+}
+
+.nec-popover-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.nec-popover-body::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.nec-popover-body::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* ===================================================================
    Responsive
    =================================================================== */
 
 @media (max-width: 640px) {
     .chat-header {
         padding: 10px 14px;
+    }
+
+    .roadmap summary {
+        padding: 8px 14px;
+    }
+
+    .roadmap ul {
+        padding-left: 30px;
+        padding-right: 14px;
+    }
+
+    .roadmap-cta {
+        padding-left: 30px;
+        padding-right: 14px;
     }
 
     .messages {

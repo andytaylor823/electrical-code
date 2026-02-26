@@ -19,6 +19,7 @@ STRUCTURED_JSON_PATH = ROOT / "data" / "prepared" / "NFPA 70 NEC 2023_structured
 _CACHE: dict = {
     "structured_json": None,
     "section_index": None,
+    "table_page_index": None,
 }
 
 
@@ -74,4 +75,41 @@ def load_section_index() -> dict[str, dict]:
 
     _CACHE["section_index"] = index
     logger.info("Section index built: %d subsections", len(index))
+    return index
+
+
+# ---------------------------------------------------------------------------
+# Table page index (table_id -> {page, article_num} from referencing subsection)
+# ---------------------------------------------------------------------------
+
+
+def _index_table_refs(subsection: dict, article_num: int, index: dict) -> None:
+    """Record page/article metadata for each table referenced by *subsection*."""
+    for raw_ref in subsection.get("referenced_tables", []):
+        table_id = raw_ref.strip().split("\n")[0].strip()
+        if table_id and table_id not in index:
+            index[table_id] = {"page": subsection["page"], "article_num": article_num}
+
+
+def load_table_page_index() -> dict[str, dict]:
+    """Map table IDs to the page and article of the subsection that references them.
+
+    Walks every subsection's ``referenced_tables`` list and records the first
+    page/article hit for each table ID.  Returns e.g.
+    ``{"Table690.31(A)(3)(1)": {"page": 610, "article_num": 685}}``.
+    """
+    if _CACHE["table_page_index"] is not None:
+        return _CACHE["table_page_index"]
+
+    data = load_structured_json()
+    index: dict[str, dict] = {}
+
+    for chapter in data["chapters"]:  # pylint: disable=unsubscriptable-object
+        for article in chapter["articles"]:
+            for part in article["parts"]:
+                for subsection in part["subsections"]:
+                    _index_table_refs(subsection, article["article_num"], index)
+
+    _CACHE["table_page_index"] = index
+    logger.info("Table page index built: %d entries", len(index))
     return index
