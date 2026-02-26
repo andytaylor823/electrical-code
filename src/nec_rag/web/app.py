@@ -30,7 +30,7 @@ from starlette.responses import StreamingResponse
 from nec_rag.agent.agent import build_nec_agent
 from nec_rag.agent.loaders import load_section_index, load_table_page_index
 from nec_rag.agent.resources import load_table_index
-from nec_rag.agent.tools import IMAGE_EXTENSIONS, get_vision_usage, reset_vision_usage
+from nec_rag.agent.tools import IMAGE_EXTENSIONS, get_vision_usage, reset_seen_sections, reset_vision_usage
 from nec_rag.agent.utils import _build_subsection_text, _format_table_as_markdown, normalize_table_id
 
 ROOT = Path(__file__).parent.parent.parent.parent.resolve()
@@ -194,6 +194,7 @@ def _stream_agent_thread(
     stream completes.
     """
     reset_vision_usage()
+    reset_seen_sections()
     accumulated_messages: list = []
     pending_descriptions: dict[str, dict[str, str]] = {}  # tool_call_id -> {present, past}
 
