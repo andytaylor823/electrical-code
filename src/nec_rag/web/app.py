@@ -28,7 +28,10 @@ from langchain_core.messages import AIMessageChunk, HumanMessage
 from starlette.responses import StreamingResponse
 
 from nec_rag.agent.agent import build_nec_agent
+from nec_rag.agent.loaders import load_section_index, load_table_page_index
+from nec_rag.agent.resources import load_table_index
 from nec_rag.agent.tools import IMAGE_EXTENSIONS, get_vision_usage, reset_vision_usage
+from nec_rag.agent.utils import _build_subsection_text, _format_table_as_markdown, normalize_table_id
 
 ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 load_dotenv(ROOT / ".env")
@@ -404,6 +407,68 @@ async def new_chat(request: Request):
         del _sessions[session_id]
         logger.info("Session cleared: %s", session_id)
     return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Section & table lookup (for hoverable references in the frontend)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/section/{section_id}")
+async def get_section(section_id: str, request: Request):
+    """Return the full text of an NEC subsection by its ID (e.g. '690.12')."""
+    _check_auth(request)
+    section_index = load_section_index()
+    subsection = section_index.get(section_id)
+    if subsection is None:
+        raise HTTPException(status_code=404, detail=f"Section '{section_id}' not found")
+
+    return JSONResponse(
+        {
+            "id": section_id,
+            "title": subsection.get("title", ""),
+            "page": subsection.get("page"),
+            "article_num": subsection.get("article_num"),
+            "article_title": subsection.get("article_title", ""),
+            "text": _build_subsection_text(subsection),
+        }
+    )
+
+
+@app.get("/api/table/{table_id:path}")
+async def get_table(table_id: str, request: Request):
+    """Return NEC table(s) rendered as markdown by ID (e.g. '690.31(A)(3)(1)').
+
+    The raw *table_id* is normalised (e.g. "690.31" -> "Table690.31") before
+    lookup.  If no exact match is found, all tables whose ID starts with the
+    normalised prefix are returned (e.g. "Table690.31" matches
+    "Table690.31(A)(3)(1)", "Table690.31(A)(3)(2)", etc.).
+    """
+    _check_auth(request)
+    normalised = normalize_table_id(table_id)
+    table_index = load_table_index()
+    page_index = load_table_page_index()
+
+    def _page_meta(tid: str) -> dict:
+        """Return page/article metadata for a table ID, or empty defaults."""
+        meta = page_index.get(tid, {})
+        return {"page": meta.get("page"), "article_num": meta.get("article_num")}
+
+    # Exact match first
+    table = table_index.get(normalised)
+    if table is not None:
+        return JSONResponse({"id": table["id"], "title": table.get("title", ""), "markdown": _format_table_as_markdown(table), **_page_meta(normalised)})
+
+    # Prefix match: collect all tables whose ID starts with the normalised prefix
+    prefix_matches = sorted([t for tid, t in table_index.items() if tid.startswith(normalised)], key=lambda t: t["id"])
+    if not prefix_matches:
+        raise HTTPException(status_code=404, detail=f"Table '{table_id}' (normalised: '{normalised}') not found")
+
+    # Use page metadata from the first matching sub-table
+    first_meta = _page_meta(prefix_matches[0]["id"])
+    combined_md = "\n\n".join(_format_table_as_markdown(t) for t in prefix_matches)
+    combined_title = f"{len(prefix_matches)} tables under {normalised.replace('Table', 'Table ')}"
+    return JSONResponse({"id": normalised, "title": combined_title, "markdown": combined_md, **first_meta})
 
 
 # ---------------------------------------------------------------------------
