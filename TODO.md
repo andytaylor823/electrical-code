@@ -121,7 +121,7 @@ Move beyond the CLI to a web interface. Must be **zero-cost** — no paid hostin
 - [x] Markdown rendering in assistant messages (NEC citations with code blocks, tables, etc.)
 - [x] Streaming responses (SSE) for token-by-token output
 - [ ] Display a "sources" panel showing which chunks were retrieved and their relevance scores
-- [ ] Collapsible source text for NEC citations
+- [x] Collapsible source text for NEC citations
 
 ### Running the web app
 
