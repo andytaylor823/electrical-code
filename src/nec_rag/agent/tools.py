@@ -50,6 +50,18 @@ def get_vision_usage() -> dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# Seen-section deduplication (prevents rag_search from returning the same
+# subsection twice across multiple calls within a single agent invocation)
+# ---------------------------------------------------------------------------
+_seen_section_ids: set[str] = set()
+
+
+def reset_seen_sections() -> None:
+    """Clear the seen-section set before a new agent invocation."""
+    _seen_section_ids.clear()
+
+
+# ---------------------------------------------------------------------------
 # Tool: rag_search
 # ---------------------------------------------------------------------------
 
@@ -104,8 +116,16 @@ def rag_search(user_request: str) -> str:
     embed_fn, collection = load_embedding_resources()
     logger.info("rag_search: user_request=%s  num_results=%d", user_request, _RAG_SEARCH_NUM_RESULTS)
     retrieved = _retrieve(user_request, embed_fn, collection, n_results=_RAG_SEARCH_NUM_RESULTS)
-    context = _build_context(retrieved)
-    logger.info("rag_search: retrieved %d subsections", len(retrieved))
+
+    # Filter out subsections the agent has already seen from prior rag_search calls
+    new_results = [r for r in retrieved if r["metadata"]["section_id"] not in _seen_section_ids]
+    skipped = len(retrieved) - len(new_results)
+    if skipped:
+        logger.info("rag_search: filtered %d duplicate sections (already in context)", skipped)
+    _seen_section_ids.update(r["metadata"]["section_id"] for r in new_results)
+
+    context = _build_context(new_results)
+    logger.info("rag_search: retrieved %d subsections (%d new, %d duplicates skipped)", len(retrieved), len(new_results), skipped)
     return context
 
 

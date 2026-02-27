@@ -18,7 +18,7 @@ from langchain_community.callbacks import get_openai_callback
 
 from nec_rag.agent.prompts import AGENT_SYSTEM_PROMPT
 from nec_rag.agent.resources import get_agent_llm, load_embedding_resources
-from nec_rag.agent.tools import IMAGE_EXTENSIONS, browse_nec_structure, explain_image, get_vision_usage, nec_lookup, rag_search, reset_vision_usage
+from nec_rag.agent.tools import IMAGE_EXTENSIONS, browse_nec_structure, explain_image, get_vision_usage, nec_lookup, rag_search, reset_seen_sections, reset_vision_usage
 from nec_rag.data_preprocessing.embedding.config import MODELS
 
 logger = logging.getLogger(__name__)
@@ -91,8 +91,9 @@ def main():
             attachments = ", ".join(image_paths)
             user_input += f"\n\n[Attached image(s): {attachments}]"
 
-        # Reset vision usage counters before each invocation
+        # Reset per-invocation state before each agent call
         reset_vision_usage()
+        reset_seen_sections()
 
         # Invoke the agent inside the token-tracking callback
         with get_openai_callback() as cb:

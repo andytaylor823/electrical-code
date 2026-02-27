@@ -327,7 +327,7 @@ EXAM_CASES = [
     (
         "q20",
         "Metal conduit installed in indoor wet locations must have a minimum airspace clearance of how much between the conduit and the wall or supporting surface?",
-        "1/4 inch (0.25 in.), per Section 300.6.",
+        "1/4 inch (0.25 in.), per Section 300.6 or Section 312.2",
     ),
 ]
 
