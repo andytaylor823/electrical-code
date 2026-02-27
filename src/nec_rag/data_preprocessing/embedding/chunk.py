@@ -11,12 +11,18 @@ and a full markdown 'document' for context display.
 
 import json
 import logging
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).parent.parent.parent.parent.parent.resolve()
 STRUCTURED_JSON_PATH = ROOT / "data" / "prepared" / "NFPA 70 NEC 2023_structured.json"
+
+# Subsections longer than this are split at lettered boundaries (A), (B), etc.
+SPLIT_THRESHOLD = 3000
+
+_LETTERED_RE = re.compile(r"^\([A-Z]\)\s")
 
 
 def _build_subsection_text(subsection: dict) -> str:
@@ -56,39 +62,89 @@ def _deduplicated_id(article_num: int, section_id: str, seen_ids: set) -> str:
     return doc_id
 
 
-def chunk_subsections(data: dict) -> list[dict]:
-    """Walk the chapter > article > part > subsection hierarchy and emit one chunk per subsection.
+def _group_by_letter(sub_items: list[dict]) -> list[tuple[str, list[dict]]]:
+    """Group sub_items by lettered subsection boundaries like (A), (B), etc.
 
-    Each chunk carries the subsection text plus metadata identifying every
-    ancestor level so retrieval results can be placed in full NEC context.
+    Returns a list of (letter, items) tuples.  Items before the first lettered
+    entry are grouped under letter "_pre".  Numbered items (1), (2) stay with
+    their preceding lettered parent.
+
+    Returns an empty list if no lettered sub_items are found.
+    """
+    groups: list[tuple[str, list[dict]]] = []
+    current_letter = "_pre"
+    current_items: list[dict] = []
+    found_any = False
+
+    for item in sub_items:
+        match = _LETTERED_RE.match(item["content"].strip())
+        if match:
+            found_any = True
+            if current_items:
+                groups.append((current_letter, current_items))
+            current_letter = item["content"].strip()[1]  # Extract letter from "(A) ..."
+            current_items = [item]
+        else:
+            current_items.append(item)
+
+    if current_items:
+        groups.append((current_letter, current_items))
+
+    if not found_any:
+        return []
+
+    # Merge any pre-lettered items into the first lettered group
+    if groups and groups[0][0] == "_pre" and len(groups) > 1:
+        pre_items = groups[0][1]
+        first_letter, first_items = groups[1]
+        groups = [(first_letter, pre_items + first_items)] + groups[2:]
+
+    return groups
+
+
+def chunk_subsections(data: dict) -> list[dict]:
+    """Walk the chapter > article > part > subsection hierarchy and emit chunks.
+
+    Small subsections emit a single chunk.  Large subsections (exceeding
+    ``SPLIT_THRESHOLD`` chars) are split at lettered sub-item boundaries
+    with the parent front_matter prepended to each child chunk for context.
     """
     chunks = []
     seen_ids: set[str] = set()
+    split_count = 0
 
     for subsection, parent_meta in _iter_subsections(data):
         section_id = subsection["id"]
-        text = _build_subsection_text(subsection)
-        doc_id = _deduplicated_id(parent_meta["article_num"], section_id, seen_ids)
-
-        # Comma-separated string because ChromaDB metadata values must be scalars
+        full_text = _build_subsection_text(subsection)
         referenced_tables = ",".join(subsection.get("referenced_tables", []))
 
-        chunks.append(
-            {
-                "id": doc_id,
-                "text": text,
-                "metadata": {
-                    "section_id": section_id,
-                    "title": subsection["title"][:500],  # ChromaDB metadata values must be <32KB
-                    "page": subsection["page"],
-                    "referenced_tables": referenced_tables,
-                    "chunk_type": "subsection",
-                    **parent_meta,
-                },
-            }
-        )
+        base_metadata = {
+            "section_id": section_id,
+            "title": subsection["title"][:500],
+            "page": subsection["page"],
+            "referenced_tables": referenced_tables,
+            "chunk_type": "subsection",
+            **parent_meta,
+        }
 
-    logger.info("Chunked %d subsections from structured JSON", len(chunks))
+        # Check if this subsection should be split
+        sub_items = subsection.get("sub_items", [])
+        groups = _group_by_letter(sub_items) if len(full_text) > SPLIT_THRESHOLD else []
+
+        if not groups:
+            # Emit as a single chunk (small section, or no lettered sub_items)
+            doc_id = _deduplicated_id(parent_meta["article_num"], section_id, seen_ids)
+            chunks.append({"id": doc_id, "text": full_text, "metadata": base_metadata})
+        else:
+            # Split into one chunk per lettered group, prepending front_matter
+            split_count += 1
+            front_matter = subsection["front_matter"]
+            for letter, items in groups:
+                group_text = front_matter + "\n" + "\n".join(item["content"] for item in items)
+                doc_id = _deduplicated_id(parent_meta["article_num"], f"{section_id}_{letter}", seen_ids)
+                chunks.append({"id": doc_id, "text": group_text, "metadata": base_metadata})
+
+    logger.info("Chunked subsections: %d chunks (%d sections split at lettered boundaries)", len(chunks), split_count)
     return chunks
 
 
