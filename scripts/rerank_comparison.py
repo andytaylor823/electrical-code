@@ -179,7 +179,8 @@ def _fmt_rank(rank: int | None) -> str:
 def _classify_rank_change(orig: int | None, reranked: int | None) -> tuple[str, str]:
     """Return (change_str, category) for a before/after rank pair.
 
-    category is one of 'improved', 'worsened', 'unchanged', or 'na'.
+    category is one of 'improved', 'worsened', or 'unchanged'.
+    Both-MISS counts as unchanged (still missed after re-ranking).
     """
     if orig is not None and reranked is not None:
         delta = orig - reranked
@@ -192,7 +193,7 @@ def _classify_rank_change(orig: int | None, reranked: int | None) -> tuple[str, 
         return "NEW", "improved"
     if orig is not None and reranked is None:
         return "LOST", "worsened"
-    return "-", "na"
+    return "-", "unchanged"
 
 
 def _print_summary_stats(results: list[dict]):
