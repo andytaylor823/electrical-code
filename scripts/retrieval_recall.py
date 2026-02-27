@@ -55,13 +55,13 @@ GROUND_TRUTH = {
     "q11": {"section_prefixes": ["240.24", "404.8"], "table_ids": []},
     "q12": {"section_prefixes": ["300.5"], "table_ids": []},
     "q13": {"section_prefixes": ["314.23"], "table_ids": []},
-    "q14": {"section_prefixes": ["705.31"], "table_ids": []},
+    "q14": {"section_prefixes": [], "table_ids": []},  # Section 705.31 removed in 2023 NEC — unanswerable
     "q15": {"section_prefixes": ["551.73"], "table_ids": ["Table551.73"]},
     "q16": {"section_prefixes": ["501.15"], "table_ids": []},
     "q17": {"section_prefixes": ["590.6"], "table_ids": []},
     "q18": {"section_prefixes": ["250.53"], "table_ids": []},
     "q19": {"section_prefixes": [], "table_ids": []},  # Pure calculation — no specific NEC section
-    "q20": {"section_prefixes": ["300.6"], "table_ids": []},
+    "q20": {"section_prefixes": ["300.6", "312.2"], "table_ids": []},
 }
 
 # Import exam cases (question text)
@@ -77,18 +77,22 @@ def _chunk_matches(chunk_meta: dict, gt: dict) -> bool:
     """Return True if a retrieved chunk matches any ground-truth reference."""
     section_id = chunk_meta.get("section_id", "")
 
-    # Check section_id prefix match
+    # Check section_id prefix match (subsection chunks)
     for prefix in gt["section_prefixes"]:
         if section_id.startswith(prefix):
             return True
 
-    # Check referenced tables
-    refs_csv = chunk_meta.get("referenced_tables", "")
-    if refs_csv and gt["table_ids"]:
-        chunk_tables = set(refs_csv.split(","))
-        for table_id in gt["table_ids"]:
-            if table_id in chunk_tables:
-                return True
+    # Check table ID matches — handles both table chunks (where section_id IS
+    # the table ID) and subsection chunks (via referenced_tables metadata)
+    if gt["table_ids"]:
+        if section_id in gt["table_ids"]:
+            return True
+        refs_csv = chunk_meta.get("referenced_tables", "")
+        if refs_csv:
+            chunk_tables = set(refs_csv.split(","))
+            for table_id in gt["table_ids"]:
+                if table_id in chunk_tables:
+                    return True
 
     return False
 

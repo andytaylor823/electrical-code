@@ -107,24 +107,28 @@ def embed_for_model(model_key: str, chunks: list[dict], reset: bool = False):
         logger.info("Collection already has %d items -- skipping (use --reset to re-embed)", existing_count)
         return
 
-    texts = [c["text"] for c in chunks]
+    # 'text' is used for embedding; 'document' (if present) is stored in ChromaDB
+    # for retrieval context.  Table chunks have a compact 'text' for embedding
+    # and a full markdown 'document' for display; subsection chunks use 'text' for both.
+    embed_texts = [c["text"] for c in chunks]
+    documents = [c.get("document", c["text"]) for c in chunks]
     ids = [c["id"] for c in chunks]
     metadatas = [c["metadata"] for c in chunks]
     batch_size = model_cfg["batch_size"]
 
-    logger.info("Embedding %d chunks in batches of %d...", len(texts), batch_size)
+    logger.info("Embedding %d chunks in batches of %d...", len(embed_texts), batch_size)
     t0 = time.time()
 
     # Dispatch to the appropriate embedding function
     if model_cfg["type"] == "local":
-        all_embeddings = _embed_qwen3(texts, batch_size)
+        all_embeddings = _embed_qwen3(embed_texts, batch_size)
     elif model_cfg["type"] == "azure":
-        all_embeddings = _embed_azure_large(texts, batch_size)
+        all_embeddings = _embed_azure_large(embed_texts, batch_size)
     else:
         raise ValueError(f"Unknown model type: {model_cfg['type']}")
 
     elapsed_embed = time.time() - t0
-    logger.info("Embedding complete in %.1f seconds (%.1f chunks/sec)", elapsed_embed, len(texts) / elapsed_embed)
+    logger.info("Embedding complete in %.1f seconds (%.1f chunks/sec)", elapsed_embed, len(embed_texts) / elapsed_embed)
 
     # Insert into ChromaDB in batches (ChromaDB add can handle large batches)
     logger.info("Storing %d vectors in ChromaDB...", len(all_embeddings))
@@ -134,7 +138,7 @@ def embed_for_model(model_key: str, chunks: list[dict], reset: bool = False):
         collection.add(
             ids=ids[batch_start:batch_end],
             embeddings=all_embeddings[batch_start:batch_end],
-            documents=texts[batch_start:batch_end],
+            documents=documents[batch_start:batch_end],
             metadatas=metadatas[batch_start:batch_end],
         )
 

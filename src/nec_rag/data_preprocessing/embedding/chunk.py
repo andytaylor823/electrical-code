@@ -1,7 +1,12 @@
-"""Chunk the structured NEC JSON into subsection-level pieces with full parent metadata.
+"""Chunk the structured NEC JSON into subsection-level and table-level pieces.
 
 Reads data/prepared/NFPA 70 NEC 2023_structured.json and produces a list of
-dicts ready for ChromaDB ingestion: each dict has 'id', 'text', and 'metadata'.
+dicts ready for ChromaDB ingestion: each dict has 'id', 'text', 'document'
+(optional), and 'metadata'.
+
+Subsection chunks use 'text' for both embedding and document storage.
+Table chunks use a compact 'text' (title + column headers) for embedding,
+and a full markdown 'document' for context display.
 """
 
 import json
@@ -77,6 +82,7 @@ def chunk_subsections(data: dict) -> list[dict]:
                     "title": subsection["title"][:500],  # ChromaDB metadata values must be <32KB
                     "page": subsection["page"],
                     "referenced_tables": referenced_tables,
+                    "chunk_type": "subsection",
                     **parent_meta,
                 },
             }
@@ -86,12 +92,98 @@ def chunk_subsections(data: dict) -> list[dict]:
     return chunks
 
 
+# ---------------------------------------------------------------------------
+# Table chunking
+# ---------------------------------------------------------------------------
+
+
+def _format_table_as_markdown(table: dict) -> str:
+    """Render a structured table dict as a readable markdown table with footnotes."""
+    lines = [f"**{table['title']}**"]
+    headers = table["column_headers"]
+    if headers:
+        lines.append("| " + " | ".join(headers) + " |")
+        lines.append("| " + " | ".join("---" for _ in headers) + " |")
+        for row in table["data_rows"]:
+            lines.append("| " + " | ".join(row) + " |")
+    for footnote in table.get("footnotes", []):
+        lines.append(f"> {footnote}")
+    return "\n".join(lines)
+
+
+def _build_table_embedding_text(table: dict) -> str:
+    """Build a compact text for embedding: title + column headers.
+
+    Keeps the embedding semantically dense (what the table is about)
+    without inflating the vector with row data.
+    """
+    title = table["title"]
+    headers = table.get("column_headers", [])
+    if headers:
+        return f"{title}\nColumns: {' | '.join(headers)}"
+    return title
+
+
+def _build_table_page_index(data: dict) -> dict[str, int]:
+    """Map table IDs to page numbers from the first subsection that references them."""
+    index: dict[str, int] = {}
+    for subsection, _ in _iter_subsections(data):
+        for ref in subsection.get("referenced_tables", []):
+            table_id = ref.strip().split("\n")[0].strip()
+            if table_id and table_id not in index:
+                index[table_id] = subsection["page"]
+    return index
+
+
+def chunk_tables(data: dict) -> list[dict]:
+    """Walk chapter > article > tables and emit one chunk per table.
+
+    Each table chunk has a compact embedding text (title + column headers)
+    and the full markdown rendering as the document for RAG context.
+    """
+    page_index = _build_table_page_index(data)
+    chunks = []
+
+    for chapter in data["chapters"]:
+        for article in chapter["articles"]:
+            for table in article["tables"]:
+                table_id = table["id"]
+                doc_id = f"table_{table_id}"
+
+                embedding_text = _build_table_embedding_text(table)
+                document = _format_table_as_markdown(table)
+
+                chunks.append(
+                    {
+                        "id": doc_id,
+                        "text": embedding_text,
+                        "document": document,
+                        "metadata": {
+                            "section_id": table_id,
+                            "title": table["title"][:500],
+                            "page": page_index.get(table_id, -1),
+                            "referenced_tables": table_id,
+                            "chunk_type": "table",
+                            "part_num": -1,
+                            "part_title": "",
+                            "article_num": article["article_num"],
+                            "article_title": article["title"],
+                            "chapter_num": chapter["chapter_num"],
+                            "chapter_title": chapter["title"],
+                        },
+                    }
+                )
+
+    logger.info("Chunked %d tables from structured JSON", len(chunks))
+    return chunks
+
+
 def load_and_chunk() -> list[dict]:
-    """Load the structured JSON from disk and return subsection chunks."""
+    """Load the structured JSON from disk and return subsection + table chunks."""
     logger.info("Loading structured JSON from %s", STRUCTURED_JSON_PATH)
     with open(STRUCTURED_JSON_PATH, "r", encoding="utf-8") as fopen:
         data = json.load(fopen)
-    return chunk_subsections(data)
+    return chunk_subsections(data) + chunk_tables(data)
 
 
 if __name__ == "__main__":

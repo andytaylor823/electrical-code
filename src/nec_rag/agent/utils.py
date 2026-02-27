@@ -54,20 +54,28 @@ def _retrieve(query: str, embed_fn, collection: chromadb.Collection, n_results: 
 
 
 def _build_context(retrieved: list[dict]) -> str:
-    """Format retrieved subsections into a markdown context string with source annotations.
+    """Format retrieved chunks (subsections and tables) into a markdown context string.
 
-    Collects ``referenced_tables`` IDs from chunk metadata and lists them at
-    the end so the agent knows which tables are available for follow-up via
-    ``nec_lookup``, but does NOT inline the full table content (the agent can
-    fetch individual tables on demand, avoiding large context bloat from
-    tables like Table 310.4(1)).
+    Collects ``referenced_tables`` IDs from subsection chunk metadata and lists
+    them at the end so the agent knows which tables are available for follow-up
+    via ``nec_lookup``.  Table chunks that were directly retrieved are excluded
+    from the referenced-tables hint since their content is already inline.
     """
     sections = []
     all_ref_ids: set[str] = set()
+    inline_table_ids: set[str] = set()
 
     for item in retrieved:
         meta = item["metadata"]
-        header = f"[Section {meta['section_id']}, Article {meta['article_num']}, page {meta['page']}]"
+        chunk_type = meta.get("chunk_type", "subsection")
+
+        # Use "Table" prefix for table chunks, "Section" for subsections
+        if chunk_type == "table":
+            header = f"[Table {meta['section_id']}, Article {meta['article_num']}, page {meta['page']}]"
+            inline_table_ids.add(meta["section_id"])
+        else:
+            header = f"[Section {meta['section_id']}, Article {meta['article_num']}, page {meta['page']}]"
+
         sections.append(f"{header}\n{item['document']}")
 
         # Gather table IDs from the comma-separated metadata field
@@ -77,9 +85,10 @@ def _build_context(retrieved: list[dict]) -> str:
 
     context_body = "\n\n".join(sections)
 
-    # List referenced table IDs so the agent can fetch them via nec_lookup
-    if all_ref_ids:
-        table_list = ", ".join(sorted(all_ref_ids))
+    # Exclude tables already shown inline from the "fetch via nec_lookup" hint
+    remaining_refs = sorted(all_ref_ids - inline_table_ids)
+    if remaining_refs:
+        table_list = ", ".join(remaining_refs)
         context_body += f"\n\n[Tables referenced by these sections: {table_list}. " "Use nec_lookup(table_ids=[...]) to retrieve any you need.]"
 
     return context_body
