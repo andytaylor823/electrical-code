@@ -1,8 +1,9 @@
 # NEC RAG — Roadmap & Next Steps
 
-Current state: agent scores **16/20 (80%)** on a 20-question master electrician practice exam.
-Four failures stem from missing Annex data, not rounding to standard sizes, and a couple of
-nuanced code sections (GFCI for 250V receptacles, conduit airspace per 300.6).
+Current state: agent scores **19/20 (95%)** on a 20-question master electrician practice exam.
+The single remaining failure (q09) is a data coverage gap — the agent correctly identifies
+the calculation method and tries to look up Chapter 9 conduit fill tables, but Chapter 9 is
+not yet in the structured dataset.
 
 > **Cost constraint:** This project is in demo stage. Everything must be **free** beyond the
 > Azure OpenAI access already provisioned (GPT model + text-embeddings-3-small). No new paid

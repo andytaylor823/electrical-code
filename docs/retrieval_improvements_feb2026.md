@@ -155,6 +155,12 @@ Only q09 (Annex C table, data not in dataset) remains a permanent miss.
 
 Taking the union of (top-5 embedding + top-10 re-ranked), **17 of 18 answerable questions** (94%) have the correct section in the merged result set. Only q09 is missed (and cannot be fixed without adding Annex data to the dataset).
 
+## End-to-End Exam Results
+
+After all retrieval improvements, the full integration test suite (`tests_integration/agent/test_master_electrician_exam.py`) scores **19/20 (95%)**, up from 16/20 (80%) at the start of this work.
+
+The single remaining failure is **q09** (minimum trade size of RMC for four 350 kcmil THWN copper conductors). The agent correctly identified the calculation method and attempted to look up the Chapter 9 conduit fill tables (`Table 1, Chapter 9`, `Table 4, Chapter 9`, `Table 5, Chapter 9`), but these tables do not exist in the dataset — Chapter 9 and the Annexes are not yet part of the structured data. The agent acknowledged this gap explicitly in its answer and estimated 2-1/2 in. RMC, but the correct answer is 3 in. RMC. This is a data coverage issue, not a retrieval or reasoning failure; adding Chapter 9 tables to the pipeline (tracked in TODO section 1) would likely fix it.
+
 ## Files Changed
 
 | File | Change |
