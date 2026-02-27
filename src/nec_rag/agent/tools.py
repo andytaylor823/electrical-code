@@ -15,13 +15,14 @@ from langchain_core.tools import tool
 
 from nec_rag.agent.loaders import load_section_index, load_structured_json
 from nec_rag.agent.prompts import VISION_SYSTEM_PROMPT
-from nec_rag.agent.resources import get_vision_client, get_vision_deployment, load_embedding_resources, load_table_index
+from nec_rag.agent.resources import get_vision_client, get_vision_deployment, load_cross_encoder, load_embedding_resources, load_table_index
 from nec_rag.agent.utils import (
     _INT_TO_ROMAN,
     _build_context,
     _build_subsection_text,
     _format_article_outline,
     _format_table_as_markdown,
+    _rerank,
     _retrieve,
     normalize_table_id,
     suggest_similar_ids,
@@ -66,21 +67,25 @@ def reset_seen_sections() -> None:
 # ---------------------------------------------------------------------------
 
 
-_RAG_SEARCH_NUM_RESULTS = 20  # number of subsections to retrieve per search
+_RAG_SEARCH_NUM_RESULTS = 50  # candidate pool size for embedding retrieval (fed into cross-encoder)
 
 
 @tool(parse_docstring=True)
 def rag_search(user_request: str) -> str:
     """Search the NEC 2023 vector database for sections relevant to a natural-language request.
 
-    Embeds the request and retrieves the most relevant NEC subsections from the
-    vector database via cosine-similarity. Returns formatted context with section
-    IDs, article numbers, and page references. Each call returns up to 20
-    subsections, which is usually more than enough to answer a question.
+    Embeds the request and retrieves candidate NEC subsections via
+    cosine-similarity, then re-ranks them with a cross-encoder for higher
+    precision.  Returns the union of the top-10 re-ranked results and the
+    top-5 embedding results (typically 10-15 sections after deduplication).
 
     Results include the full text of each subsection plus a list of table IDs
-    referenced by those subsections. Table content is NOT included inline --
+    referenced by those subsections. Table content may not be included inline --
     use nec_lookup(table_ids=[...]) to fetch any tables you need.
+
+    If important sections returned from this reference other sections, you should also
+    retrieve the referenced sections using nec_lookup as necessary.
+        Example: "Section 310.3(A)(1): Except as provided in 250.53, the equipment..."
 
     USE WHEN: You do not yet know which NEC articles, sections, or tables are
     relevant to the user's question. This is a discovery tool for open-ended
@@ -114,18 +119,22 @@ def rag_search(user_request: str) -> str:
             followed by a list of referenced table IDs. Use nec_lookup to fetch tables.
     """
     embed_fn, collection = load_embedding_resources()
+    cross_encoder = load_cross_encoder()
     logger.info("rag_search: user_request=%s  num_results=%d", user_request, _RAG_SEARCH_NUM_RESULTS)
+
+    # Retrieve a wide candidate pool, then re-rank and merge
     retrieved = _retrieve(user_request, embed_fn, collection, n_results=_RAG_SEARCH_NUM_RESULTS)
+    merged = _rerank(user_request, retrieved, cross_encoder, top_n_rerank=10, top_n_embed=5)
 
     # Filter out subsections the agent has already seen from prior rag_search calls
-    new_results = [r for r in retrieved if r["metadata"]["section_id"] not in _seen_section_ids]
-    skipped = len(retrieved) - len(new_results)
+    new_results = [r for r in merged if r["metadata"]["section_id"] not in _seen_section_ids]
+    skipped = len(merged) - len(new_results)
     if skipped:
         logger.info("rag_search: filtered %d duplicate sections (already in context)", skipped)
     _seen_section_ids.update(r["metadata"]["section_id"] for r in new_results)
 
     context = _build_context(new_results)
-    logger.info("rag_search: retrieved %d subsections (%d new, %d duplicates skipped)", len(retrieved), len(new_results), skipped)
+    logger.info("rag_search: returned %d sections (%d new, %d duplicates skipped)", len(merged), len(new_results), skipped)
     return context
 
 

@@ -17,7 +17,7 @@ from langchain.agents import create_agent
 from langchain_community.callbacks import get_openai_callback
 
 from nec_rag.agent.prompts import AGENT_SYSTEM_PROMPT
-from nec_rag.agent.resources import get_agent_llm, load_embedding_resources
+from nec_rag.agent.resources import get_agent_llm, load_cross_encoder, load_embedding_resources
 from nec_rag.agent.tools import IMAGE_EXTENSIONS, browse_nec_structure, explain_image, get_vision_usage, nec_lookup, rag_search, reset_seen_sections, reset_vision_usage
 from nec_rag.data_preprocessing.embedding.config import MODELS
 
@@ -29,8 +29,9 @@ def build_nec_agent(embedding_model_key: str = "azure-large"):
 
     Pre-loads the RAG embedding resources so the first tool call is fast.
     """
-    # Pre-warm the embedding model and ChromaDB collection
+    # Pre-warm the embedding model, ChromaDB collection, and cross-encoder
     load_embedding_resources(embedding_model_key)
+    load_cross_encoder()
 
     llm = get_agent_llm()
     tools = [rag_search, browse_nec_structure, nec_lookup, explain_image]

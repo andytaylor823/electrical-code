@@ -53,6 +53,54 @@ def _retrieve(query: str, embed_fn, collection: chromadb.Collection, n_results: 
     return retrieved
 
 
+def _rerank(query: str, retrieved: list[dict], cross_encoder, top_n_rerank: int = 10, top_n_embed: int = 5) -> list[dict]:
+    """Re-rank retrieved chunks and return the union of top embedding and top re-ranked results.
+
+    Scores every chunk in *retrieved* with the cross-encoder, then merges:
+    - the top ``top_n_rerank`` chunks by re-rank score (highest first)
+    - the top ``top_n_embed`` chunks by embedding distance (already sorted)
+
+    Duplicates are removed by index position; re-ranked items come first,
+    followed by any embedding-only items that weren't already included.
+    """
+    if not retrieved:
+        return []
+
+    # Build (query, document) pairs for the cross-encoder
+    pairs = [(query, item["document"]) for item in retrieved]
+    scores = cross_encoder.predict(pairs)
+
+    # Indices of top-N by re-rank score (descending)
+    scored_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+    rerank_indices = scored_indices[:top_n_rerank]
+
+    # Indices of top-N by embedding distance (already in order from _retrieve)
+    embed_indices = list(range(min(top_n_embed, len(retrieved))))
+
+    # Union: re-ranked first, then embedding-only extras
+    seen: set[int] = set()
+    merged_indices: list[int] = []
+    for idx in rerank_indices:
+        if idx not in seen:
+            merged_indices.append(idx)
+            seen.add(idx)
+    for idx in embed_indices:
+        if idx not in seen:
+            merged_indices.append(idx)
+            seen.add(idx)
+
+    merged = [retrieved[i] for i in merged_indices]
+    logger.info(
+        "_rerank: %d candidates scored, returning %d (top-%d rerank + top-%d embed, %d overlap)",
+        len(retrieved),
+        len(merged),
+        top_n_rerank,
+        top_n_embed,
+        len(set(rerank_indices) & set(embed_indices)),
+    )
+    return merged
+
+
 def _build_context(retrieved: list[dict]) -> str:
     """Format retrieved chunks (subsections and tables) into a markdown context string.
 

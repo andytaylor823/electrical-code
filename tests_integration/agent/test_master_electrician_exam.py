@@ -245,7 +245,7 @@ EXAM_CASES = [
             "As a general rule regarding solar photovoltaic (PV) systems, supply-side conductor connections for PV systems must terminate in an overcurrent protection device that is within no more than what "
             "distance of the service disconnecting means?"
         ),
-        "10 feet, per Section 705.31.",
+        "10 feet, per Section 705.31 (NOTE THAT THIS SECTION IS FROM OLDER VERSIONS AND DOES NOT EXIST IN THE NEC 2023, SO CITATION MAY NOT MATCH)",
     ),
     # ------------------------------------------------------------------
     # Q15  Section 551.73 / Table 551.73(A)
