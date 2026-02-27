@@ -28,10 +28,13 @@ load_dotenv(ROOT / ".env")
 _CACHE: dict = {
     "embed_fn": None,
     "collection": None,
+    "cross_encoder": None,
     "agent_llm": None,
     "vision_client": None,
     "table_index": None,
 }
+
+CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +96,29 @@ def load_embedding_resources(model_key: str = "azure-large"):
     logger.info("ChromaDB collection '%s' loaded (%d items) from %s", COLLECTION_NAME, _CACHE["collection"].count(), store_path)
 
     return _CACHE["embed_fn"], _CACHE["collection"]
+
+
+# ---------------------------------------------------------------------------
+# Cross-encoder for re-ranking
+# ---------------------------------------------------------------------------
+
+
+def load_cross_encoder():
+    """Load the cross-encoder model for re-ranking, caching for reuse.
+
+    Returns a ``sentence_transformers.CrossEncoder`` instance with sigmoid
+    activation so scores fall in [0, 1].
+    """
+    if _CACHE["cross_encoder"] is not None:
+        return _CACHE["cross_encoder"]
+
+    import torch  # pylint: disable=import-outside-toplevel
+    from sentence_transformers import CrossEncoder  # pylint: disable=import-outside-toplevel
+
+    logger.info("Loading cross-encoder model '%s'...", CROSS_ENCODER_MODEL)
+    _CACHE["cross_encoder"] = CrossEncoder(CROSS_ENCODER_MODEL, activation_fn=torch.nn.Sigmoid())
+    logger.info("Cross-encoder loaded.")
+    return _CACHE["cross_encoder"]
 
 
 # ---------------------------------------------------------------------------

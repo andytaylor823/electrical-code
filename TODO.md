@@ -1,8 +1,9 @@
 # NEC RAG — Roadmap & Next Steps
 
-Current state: agent scores **16/20 (80%)** on a 20-question master electrician practice exam.
-Four failures stem from missing Annex data, not rounding to standard sizes, and a couple of
-nuanced code sections (GFCI for 250V receptacles, conduit airspace per 300.6).
+Current state: agent scores **19/20 (95%)** on a 20-question master electrician practice exam.
+The single remaining failure (q09) is a data coverage gap — the agent correctly identifies
+the calculation method and tries to look up Chapter 9 conduit fill tables, but Chapter 9 is
+not yet in the structured dataset.
 
 > **Cost constraint:** This project is in demo stage. Everything must be **free** beyond the
 > Azure OpenAI access already provisioned (GPT model + text-embeddings-3-small). No new paid
@@ -81,19 +82,23 @@ This is more flexible than static cross-reference hydration: the agent decides w
 context it needs based on the question, rather than us guessing at retrieval time. It also
 avoids bloating every query's context with potentially irrelevant cross-referenced sections.
 
-### 3d. Evaluate a re-ranker
-A re-ranker (e.g. a cross-encoder like `cross-encoder/ms-marco-MiniLM-L-6-v2`) scores each
-retrieved chunk against the query with full attention, which can surface more relevant results
-than embedding cosine similarity alone. This pairs well with retrieving more chunks (3b) —
-over-retrieve with embeddings, then re-rank to keep the best N.
+### 3d. Evaluate a re-ranker ✅
+A cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`) now re-ranks retrieval results
+in the live pipeline. The agent retrieves 50 candidates from ChromaDB, scores them all with
+the cross-encoder, and returns the union of (top-10 re-ranked) + (top-5 embedding), deduplicated.
+This captures the best of both methods — embeddings catch domain-specific matches while the
+cross-encoder catches semantic matches that pure cosine similarity misses.
 
-- [ ] **Prerequisite:** expand the ground-truth question bank (section 2) so there's enough
-      signal to measure whether re-ranking actually helps
-- [ ] Pick a free, open-source cross-encoder model (runs locally, no new paid services)
-- [ ] Implement a re-rank step between `_retrieve()` and `_build_context()`: retrieve
-      a larger candidate set (e.g. 40–50), re-rank, keep top 20
-- [ ] Compare retrieval precision before/after re-ranking on the ground-truth set
-- [ ] Measure latency overhead — cross-encoders are heavier than a cosine lookup
+See `docs/retrieval_improvements_feb2026.md` for full details.
+
+- [x] Pick a free, open-source cross-encoder model (runs locally, no new paid services)
+- [x] Implement a re-rank step between `_retrieve()` and `_build_context()`: retrieve
+      50 candidates, re-rank, return union of top-10 reranked + top-5 embedding
+- [x] Compare retrieval precision before/after re-ranking on the ground-truth set
+- [x] Embed NEC tables as searchable chunks (title + column headers for embedding,
+      full markdown for context)
+- [x] Split large subsections (>3,000 chars) at lettered boundaries with parent
+      front_matter prepended to combat chunk dilution
 
 ---
 

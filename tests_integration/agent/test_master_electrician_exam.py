@@ -245,7 +245,7 @@ EXAM_CASES = [
             "As a general rule regarding solar photovoltaic (PV) systems, supply-side conductor connections for PV systems must terminate in an overcurrent protection device that is within no more than what "
             "distance of the service disconnecting means?"
         ),
-        "10 feet, per Section 705.31.",
+        "10 feet, per Section 705.31 (NOTE THAT THIS SECTION IS FROM OLDER VERSIONS AND DOES NOT EXIST IN THE NEC 2023, SO CITATION MAY NOT MATCH)",
     ),
     # ------------------------------------------------------------------
     # Q15  Section 551.73 / Table 551.73(A)
@@ -291,7 +291,7 @@ EXAM_CASES = [
         (
             "When building a temporary service at a construction site, which of the following receptacles must be GFCI protected: (I) 125-volt, 15- and 20-ampere receptacles, (II) 250-volt, 20- and 30-ampere receptacles, or both?"
         ),
-        "Both. All 125-volt 15- and 20-ampere receptacles (Section 590.6(A)(1)) and 250-volt receptacles (Section 590.6(B)) require GFCI protection.",
+        "Both require ground-fault protection, but only 125-volt receptacles (590.6(A)) strictly require GFCI. 250-volt receptacles (590.6(B)) may use either GFCI or an assured equipment grounding conductor program.",
     ),
     # ------------------------------------------------------------------
     # Q18  Section 250.53(A)(3)
