@@ -49,11 +49,17 @@
             </div>
         </header>
 
+        <!-- Budget limit banner (shown when daily cost cap is reached) -->
+        <div id="budget-banner" class="budget-banner hidden">
+            <span class="budget-banner-icon">&#9888;</span>
+            <span id="budget-banner-text">Daily usage limit reached. Service resets at midnight.</span>
+        </div>
+
         <!-- Planned updates banner (collapsible, persists across chat) -->
         <details class="roadmap" open>
             <summary>Planned Updates</summary>
             <ul>
-                <li>Use a re-ranker in RAG search to retrieve better results with fewer documents</li>
+                <li>Faster responses &mdash; smarter routing so simple questions get answered quickly</li>
                 <li>Add NEC Annex data to be accessible</li>
                 <li>Expand practice test coverage</li>
             </ul>

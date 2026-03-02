@@ -25,6 +25,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "python-multipart",
+    "python-dateutil",
 ]
 
 [project.optional-dependencies]

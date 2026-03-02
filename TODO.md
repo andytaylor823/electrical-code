@@ -102,7 +102,26 @@ See `docs/retrieval_improvements_feb2026.md` for full details.
 
 ---
 
-## 4. Reorder Retrieved Context for Coherence
+## 4. Adaptive Reasoning for Faster Responses
+
+Simple questions (e.g. "What wire size for a 30A circuit?") don't need the same depth of
+reasoning as multi-step calculations. Adding middleware that dynamically selects the model's
+reasoning effort based on query complexity would cut response times significantly for
+straightforward lookups.
+
+**Prerequisite:** expanded practice test coverage (section 2) — need a broad, scored test
+suite to validate that lower-reasoning answers don't regress accuracy.
+
+- [ ] Classify incoming queries by complexity (lookup vs. calculation vs. multi-step)
+- [ ] Map complexity tiers to reasoning effort levels (e.g. Azure OpenAI `reasoning_effort`
+      parameter, or model selection)
+- [ ] Add middleware / pre-processing step that routes queries before the agent runs
+- [ ] Benchmark latency improvement across the test suite at each reasoning tier
+- [ ] Verify no accuracy regression on the master electrician exam at reduced reasoning
+
+---
+
+## 5. Reorder Retrieved Context for Coherence
 
 Once context is fully hydrated (sections + referenced tables + referenced subsections), the
 ordering should be logical rather than arbitrary retrieval-rank order.
@@ -114,7 +133,7 @@ ordering should be logical rather than arbitrary retrieval-rank order.
 
 ---
 
-## 5. Build a Frontend ✅ (scaffolded)
+## 6. Build a Frontend ✅ (scaffolded)
 
 Move beyond the CLI to a web interface. Must be **zero-cost** — no paid hosting or services.
 
@@ -156,14 +175,14 @@ ngrok http 8000
 
 ---
 
-## 6. Share with Adam (with Usage Safeguards)
+## 7. Share with Adam (with Usage Safeguards)
 
 Let Adam try the agent without using your laptop, while keeping costs at zero (or near-zero).
 
 ### 6a. Free deployment options
 - [x] **Option A — Tunnel from your machine:** Run the app locally and expose via ngrok
       or Cloudflare Tunnel (`ngrok http 8000`). Zero hosting cost; only runs when your
-      machine is on. See section 5 for instructions.
+      machine is on. See section 6 for instructions.
 - [ ] **Option B — Free-tier cloud:** Gradio apps can be shared via HuggingFace Spaces
       (free tier). Streamlit has Streamlit Community Cloud (free). Both require the app
       to call your existing Azure OpenAI endpoint for LLM/embedding — no new services.

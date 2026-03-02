@@ -184,6 +184,29 @@ body {
 }
 
 /* ===================================================================
+   Budget Limit Banner
+   =================================================================== */
+
+.budget-banner {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    background: #3a1c00;
+    border-bottom: 1px solid #e57c1a;
+    color: #f5a623;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.budget-banner-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+/* ===================================================================
    Roadmap Banner (collapsible, between header and messages)
    =================================================================== */
 
