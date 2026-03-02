@@ -2,6 +2,7 @@
 data/intermediate/
 data/prepared/
 data/feedback/
+data/traces/
 
 # Environment
 .env
@@ -27,6 +28,9 @@ build/
 # Generated data
 vectors/
 data/vectors/
+
+# Admin scripts
+budget_check.py
 
 # Integration test logs
 tests_integration/logs/

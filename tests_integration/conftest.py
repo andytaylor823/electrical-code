@@ -190,7 +190,7 @@ def nec_agent(run_log_dir):  # pylint: disable=redefined-outer-name,unused-argum
 @pytest.fixture(scope="session")
 def llm_judge():
     """Return a callable(question, correct_answer, agent_response) -> JudgeVerdict."""
-    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.2-chat")
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5-mini")
     client = AzureOpenAI(
         api_key=os.getenv("AZURE_OPENAI_API_KEY"),
         azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),

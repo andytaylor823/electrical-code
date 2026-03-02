@@ -308,7 +308,7 @@ def main() -> None:
 
     # Set up LLM client
     client = build_client()
-    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.2-chat")
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5-mini")
     logger.info("Using deployment: %s", deployment)
 
     # Process each table and collect results

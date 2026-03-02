@@ -166,7 +166,7 @@ def get_agent_llm(reasoning_effort: str = "medium") -> AzureChatOpenAI:
             ``"medium"`` so reasoning is guaranteed regardless of server defaults.
     """
     if _CACHE["agent_llm"] is None:
-        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.2-chat")
+        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5-mini")
         _CACHE["agent_llm"] = AzureChatOpenAI(
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -197,4 +197,4 @@ def get_vision_client() -> AzureOpenAI:
 
 def get_vision_deployment() -> str:
     """Return the Azure deployment name to use for vision requests."""
-    return os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.2-chat")
+    return os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5-mini")

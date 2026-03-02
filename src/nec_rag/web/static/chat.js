@@ -12,6 +12,7 @@ function generateSessionId() {
 let sessionId = generateSessionId();
 let pendingImages = [];   // { file: File, dataUrl: string }
 let isWaiting = false;
+let budgetExceeded = false;  // true when daily cost cap is hit
 
 // Streaming response state (active during token-by-token text delivery)
 let streamingAccumulator = "";
@@ -40,6 +41,9 @@ const contextWheel  = document.getElementById("context-wheel");
 const wheelFill     = document.getElementById("wheel-fill");
 const wheelTooltip  = document.getElementById("wheel-tooltip");
 
+const budgetBanner      = document.getElementById("budget-banner");
+const budgetBannerText  = document.getElementById("budget-banner-text");
+
 const feedbackBtn       = document.getElementById("feedback-btn");
 const feedbackOverlay   = document.getElementById("feedback-overlay");
 const feedbackForm      = document.getElementById("feedback-form");
@@ -67,6 +71,29 @@ function renderMarkdown(text) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/\n/g, "<br>");
+}
+
+// ---------------------------------------------------------------------------
+// Budget checking
+// ---------------------------------------------------------------------------
+
+async function checkBudget() {
+    try {
+        const resp = await fetch("/api/budget");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        budgetExceeded = data.exceeded;
+        if (data.exceeded) {
+            budgetBannerText.textContent =
+                `Daily usage limit reached ($${data.spent.toFixed(2)} / $${data.limit.toFixed(2)}). Service resets at midnight.`;
+            budgetBanner.classList.remove("hidden");
+        } else {
+            budgetBanner.classList.add("hidden");
+        }
+        updateSendButton();
+    } catch {
+        // Server unreachable — don't block the UI
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +376,7 @@ async function handleLogin() {
         loginScreen.classList.add("hidden");
         chatScreen.classList.remove("hidden");
         messageInput.focus();
+        checkBudget();
     } catch (err) {
         loginError.textContent = "Connection error. Is the server running?";
     } finally {
@@ -381,7 +409,7 @@ messageInput.addEventListener("input", () => {
 function updateSendButton() {
     const hasText = messageInput.value.trim().length > 0;
     const hasImages = pendingImages.length > 0;
-    sendBtn.disabled = (!hasText && !hasImages) || isWaiting;
+    sendBtn.disabled = (!hasText && !hasImages) || isWaiting || budgetExceeded;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +512,13 @@ async function sendMessage() {
             loginScreen.classList.remove("hidden");
             loginError.textContent = "Session expired. Please log in again.";
             passwordInput.focus();
+            return;
+        }
+
+        if (resp.status === 429) {
+            statusRow.remove();
+            await checkBudget();
+            addMessageToUI("assistant", "**Daily usage limit reached.** The service will resume at midnight. Please try again tomorrow.");
             return;
         }
 
@@ -652,13 +687,13 @@ function handleStreamEvent(data, statusRow, statusContainer) {
 
     } else if (data.type === "final") {
         if (streamingBodyEl) {
-            // We were streaming — finalize with authoritative text and token info
             finalizeStreamingResponse(data.token_info, data.response);
         } else {
-            // No deltas received (e.g. empty response) — fall back to full render
             statusRow.remove();
             addMessageToUI("assistant", data.response, [], data.token_info);
         }
+        // Re-check budget — this request may have pushed us over the limit
+        checkBudget();
 
     } else if (data.type === "error") {
         // Clean up streaming state if active
@@ -811,6 +846,7 @@ newChatBtn.addEventListener("click", async () => {
     pendingImages = [];
     renderPreviews();
     resetContextWheel();
+    checkBudget();
 
     // Clear messages and show welcome
     messagesEl.innerHTML = `
@@ -918,6 +954,7 @@ feedbackSubmitBtn.addEventListener("click", async () => {
             loginScreen.classList.add("hidden");
             chatScreen.classList.remove("hidden");
             messageInput.focus();
+            checkBudget();
         }
     } catch {
         // Server not reachable or not authenticated — stay on login

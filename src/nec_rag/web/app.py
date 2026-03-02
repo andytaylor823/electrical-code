@@ -14,6 +14,7 @@ import logging
 import os
 import tempfile
 import threading
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -32,6 +33,7 @@ from nec_rag.agent.loaders import load_section_index, load_table_page_index
 from nec_rag.agent.resources import load_table_index
 from nec_rag.agent.tools import IMAGE_EXTENSIONS, get_vision_usage, reset_seen_sections, reset_vision_usage
 from nec_rag.agent.utils import _build_subsection_text, _format_table_as_markdown, normalize_table_id
+from nec_rag.web.traces import get_daily_cost, rebuild_daily_cost, record_turn, serialize_message
 
 ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 load_dotenv(ROOT / ".env")
@@ -56,6 +58,9 @@ CONTEXT_WINDOW = int(os.getenv("CONTEXT_WINDOW_SIZE", "128000"))
 
 # Directory for user-submitted feedback (conversation snapshots + comments)
 FEEDBACK_DIR = ROOT / "data" / "feedback"
+
+# Daily cost cap (USD). 0 = unlimited.
+DAILY_COST_LIMIT = float(os.getenv("NEC_DAILY_COST_LIMIT", "20"))
 
 # ---------------------------------------------------------------------------
 # In-memory state (ephemeral — lost on server restart)
@@ -207,6 +212,8 @@ def _stream_agent_thread(
         "tools": lambda msgs: _process_tools_node(msgs, pending_descriptions, _put),
     }
 
+    t_start = time.monotonic()
+
     try:
         with get_openai_callback() as cb:
             # Stream both node-level updates (for tool events) and message-level
@@ -223,17 +230,17 @@ def _stream_agent_thread(
                     if isinstance(data[0], AIMessageChunk) and isinstance(data[0].content, str) and data[0].content:
                         _put({"type": "text_delta", "content": data[0].content})
 
+        result_holder["latency_seconds"] = time.monotonic() - t_start
+
         # Build combined token info (agent LLM + standalone vision calls)
         vision = get_vision_usage()
-        context_used = _last_call_prompt_tokens(accumulated_messages)
-
         token_info = {
             "prompt_tokens": cb.prompt_tokens + vision["prompt_tokens"],
             "completion_tokens": cb.completion_tokens + vision["completion_tokens"],
             "total_tokens": cb.total_tokens + vision["total_tokens"],
             "llm_calls": cb.successful_requests,
             "context_window": CONTEXT_WINDOW,
-            "context_used": context_used,
+            "context_used": _last_call_prompt_tokens(accumulated_messages),
         }
 
         # The last accumulated message is the final AI response
@@ -243,14 +250,19 @@ def _stream_agent_thread(
         _put({"type": "final", "response": final_content, "token_info": token_info})
 
         logger.info(
-            "Stream complete — tokens=%d (prompt=%d, completion=%d) | context_used=%d/%d | LLM calls=%d",
+            "Stream complete — tokens=%d (prompt=%d, completion=%d) | context_used=%d/%d | LLM calls=%d | %.1fs",
             token_info["total_tokens"],
             token_info["prompt_tokens"],
             token_info["completion_tokens"],
-            context_used,
+            token_info["context_used"],
             CONTEXT_WINDOW,
             token_info["llm_calls"],
+            result_holder["latency_seconds"],
         )
+
+        # Expose token info and new messages so the caller can record the trace
+        result_holder["token_info"] = token_info
+        result_holder["new_messages"] = accumulated_messages
 
     except Exception:  # pylint: disable=broad-exception-caught
         logger.exception("Agent streaming error")
@@ -263,7 +275,7 @@ def _stream_agent_thread(
     loop.call_soon_threadsafe(event_queue.put_nowait, None)
 
 
-async def _sse_event_generator(agent, messages: list, session_id: str):
+async def _sse_event_generator(agent, messages: list, session_id: str, user_text: str):
     """Async generator that yields SSE lines from the agent stream.
 
     Spawns the synchronous ``agent.stream()`` in a background thread and
@@ -272,6 +284,7 @@ async def _sse_event_generator(agent, messages: list, session_id: str):
     loop = asyncio.get_running_loop()
     event_queue: asyncio.Queue = asyncio.Queue()
     result_holder: dict = {"messages": None}
+    request_timestamp = datetime.now(timezone.utc)
 
     # Yield the initial "Thinking…" status before the thread starts producing
     yield _sse_line({"type": "thinking"})
@@ -298,6 +311,17 @@ async def _sse_event_generator(agent, messages: list, session_id: str):
         _sessions[session_id] = result_holder["messages"]
         logger.info("Session %s updated — %d messages total", session_id, len(result_holder["messages"]))
 
+    # Record the turn to the trace file on disk
+    token_info = result_holder.get("token_info")
+    if token_info is not None:
+        token_info["user_timestamp"] = request_timestamp.isoformat()
+        new_messages = result_holder.get("new_messages", [])
+        latency = result_holder.get("latency_seconds", 0.0)
+        try:
+            record_turn(session_id, user_text, new_messages, token_info, latency)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Failed to write trace for session %s", session_id)
+
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -306,8 +330,11 @@ async def _sse_event_generator(agent, messages: list, session_id: str):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Pre-warm the NEC agent on server startup."""
+    """Pre-warm the NEC agent and initialise daily cost tracking on startup."""
     global _AGENT  # pylint: disable=global-statement
+    rebuild_daily_cost()
+    if DAILY_COST_LIMIT > 0:
+        logger.info("Daily cost limit: $%.2f (current spend: $%.4f)", DAILY_COST_LIMIT, get_daily_cost())
     logger.info("Initializing NEC agent (this may take a moment)...")
     _AGENT = build_nec_agent()
     logger.info("NEC agent ready — listening for requests.")
@@ -323,6 +350,28 @@ def _check_auth(request: Request) -> None:
     token = request.cookies.get("nec_auth")
     if not token or token not in _auth_tokens:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+def _budget_status() -> dict:
+    """Return a dict describing today's cost vs. the daily limit."""
+    spent = get_daily_cost()
+    exceeded = 0 < DAILY_COST_LIMIT <= spent
+    return {
+        "spent": round(spent, 4),
+        "limit": DAILY_COST_LIMIT,
+        "exceeded": exceeded,
+    }
+
+
+def _check_budget() -> None:
+    """Raise 429 if the daily cost limit has been reached."""
+    if DAILY_COST_LIMIT <= 0:
+        return
+    if get_daily_cost() >= DAILY_COST_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily usage limit reached (${get_daily_cost():.2f} / ${DAILY_COST_LIMIT:.2f}). Service resets at midnight.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +401,18 @@ async def login(request: Request):
     return response
 
 
+@app.get("/api/budget")
+async def budget(request: Request, key: str = ""):
+    """Return today's spend vs. the configured daily cost limit.
+
+    Accessible via normal auth cookie (frontend) OR via ``?key=<password>``
+    query param so the operator can curl it without logging in.
+    """
+    if key != APP_PASSWORD:
+        _check_auth(request)
+    return JSONResponse(_budget_status())
+
+
 @app.post("/api/chat")
 async def chat(
     request: Request,
@@ -361,6 +422,7 @@ async def chat(
 ):
     """Handle a chat message: save images, stream SSE progress events, then the final response."""
     _check_auth(request)
+    _check_budget()
 
     # Save uploaded images to the temp directory
     image_paths: list[str] = []
@@ -392,7 +454,7 @@ async def chat(
 
     # Stream SSE events as the agent thinks and calls tools
     return StreamingResponse(
-        _sse_event_generator(_AGENT, _sessions[session_id], session_id),
+        _sse_event_generator(_AGENT, _sessions[session_id], session_id, user_text),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -477,20 +539,6 @@ async def get_table(table_id: str, request: Request):
 # ---------------------------------------------------------------------------
 
 
-def _serialize_message(msg) -> dict:
-    """Convert a LangChain BaseMessage into a plain dict for JSON export."""
-    entry: dict = {"role": msg.type, "content": msg.content}
-    # AI messages may carry tool calls with name, args, and id
-    tool_calls = getattr(msg, "tool_calls", None)
-    if tool_calls:
-        entry["tool_calls"] = [{"name": tc["name"], "args": tc["args"], "id": tc["id"]} for tc in tool_calls]
-    # Tool response messages reference the call they answered
-    if msg.type == "tool":
-        entry["tool_call_id"] = getattr(msg, "tool_call_id", None)
-        entry["name"] = getattr(msg, "name", None)
-    return entry
-
-
 @app.post("/api/feedback")
 async def submit_feedback(request: Request):
     """Save user feedback along with the full conversation snapshot to disk."""
@@ -504,7 +552,7 @@ async def submit_feedback(request: Request):
 
     # Serialize the conversation history (empty list if session has no messages yet)
     messages = _sessions.get(session_id, [])
-    conversation = [_serialize_message(m) for m in messages]
+    conversation = [serialize_message(m) for m in messages]
 
     now = datetime.now(timezone.utc)
     payload = {

@@ -283,7 +283,7 @@ def nec_lookup(section_ids: list[str] | None = None, table_ids: list[str] | None
                 valid_ids = sorted(section_index.keys())
                 suggestions = suggest_similar_ids(sid, valid_ids)
                 hint = ", ".join(suggestions) if suggestions else "(no similar IDs found)"
-                output_parts.append(f"Error: section '{sid}' not found. Similar section IDs: {hint}")
+                output_parts.append(f"Error: section '{sid}' not found. Is it a table instead? Similar SECTION IDs: {hint}")
                 logger.warning("nec_lookup: section '%s' not found", sid)
             else:
                 header = f"[Section {sid}, Article {subsection['article_num']}, page {subsection['page']}]"
@@ -301,7 +301,7 @@ def nec_lookup(section_ids: list[str] | None = None, table_ids: list[str] | None
                 valid_ids = sorted(table_index.keys())
                 suggestions = suggest_similar_ids(normalised, valid_ids)
                 hint = ", ".join(suggestions) if suggestions else "(no similar IDs found)"
-                output_parts.append(f"Error: table '{tid}' (normalised: '{normalised}') not found. Similar table IDs: {hint}")
+                output_parts.append(f"Error: table '{tid}' (normalised: '{normalised}') not found. Is it a section instead? Similar TABLE IDs: {hint}")
                 logger.warning("nec_lookup: table '%s' (normalised '%s') not found", tid, normalised)
             else:
                 output_parts.append(_format_table_as_markdown(table))
